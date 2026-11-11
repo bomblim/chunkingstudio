@@ -1,0 +1,16 @@
+# 이미지 빌드 컨텍스트에서 제외 (비밀값·로컬 데이터·빌드 산출물)
+.git
+.claude
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+backend/.venv
+backend/data
+frontend/dist
+deploy/milvus/volumes
+dist
+test

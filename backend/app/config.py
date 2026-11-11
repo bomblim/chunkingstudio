@@ -62,6 +62,12 @@ class Settings:
     # 기본 데이터(샘플 Parser/모델/프롬프트/문서) 시드 여부
     seed: bool = field(default_factory=lambda: _bool("CS_SEED", True))
     public_base_url: str = field(default_factory=lambda: os.environ.get("CS_PUBLIC_BASE_URL", "http://127.0.0.1:8000"))
+    # 빌드된 프론트엔드 경로(컨테이너 배포). 비어 있으면 API만 제공
+    static_dir: Path | None = field(
+        default_factory=lambda: Path(os.environ["CS_STATIC_DIR"]) if os.environ.get("CS_STATIC_DIR") else None
+    )
+    # 시드 시 기본 Milvus 저장소 주소
+    milvus_uri: str = field(default_factory=lambda: os.environ.get("CS_MILVUS_URI", "http://localhost:19530"))
 
     @property
     def db_url(self) -> str:

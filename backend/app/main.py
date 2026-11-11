@@ -37,3 +37,22 @@ if settings.enable_sample_parser:
 @app.get("/api/health")
 def health() -> dict[str, object]:
     return {"ok": True, "allow_external_llm": settings.allow_external_llm}
+
+
+# ---------------------------------------------------------------- 프론트엔드 정적 파일 (컨테이너 배포용)
+# CS_STATIC_DIR에 빌드된 프론트(frontend/dist)가 있으면 같은 서버에서 화면도 제공한다.
+# /api 이외의 경로는 index.html을 돌려줘 클라이언트 라우팅(/documents 등)을 지원한다.
+if settings.static_dir and (settings.static_dir / "index.html").is_file():
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    _static_root = settings.static_dir.resolve()
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str) -> FileResponse:
+        if path.startswith("api/") or path == "api":
+            raise HTTPException(404, "Not Found")
+        target = (_static_root / path).resolve()
+        if path and target.is_file() and target.is_relative_to(_static_root):
+            return FileResponse(target)
+        return FileResponse(_static_root / "index.html", headers={"Cache-Control": "no-cache"})

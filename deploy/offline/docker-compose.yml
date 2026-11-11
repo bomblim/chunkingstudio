@@ -1,0 +1,14 @@
+# 폐쇄망 서버 실행용. build.sh가 이미지 태그를 채워 dist/에 복사한다.
+#   docker compose up -d
+# Milvus는 포함하지 않는다. 기존 Milvus 주소를 .env의 CS_MILVUS_URI로 지정한다.
+services:
+  chunking-studio:
+    image: chunking-studio:VERSION
+    container_name: chunking-studio
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data

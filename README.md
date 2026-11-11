@@ -119,6 +119,13 @@ cp backend/.env.example backend/.env
 
 LLM API 키와 Parser 인증값은 DB에 저장하지 않고, 모델·Parser에 등록한 **환경변수 이름**으로 서버에서 읽습니다 (예: `ANTHROPIC_API_KEY`).
 
+## 폐쇄망 배포
+
+인터넷이 되는 PC에서 이미지를 만들어 tar로 옮긴 뒤 폐쇄망 서버에서 `docker load`로 올립니다. GitHub Release에 빌드된 파일이 첨부됩니다.
+
+- **Chunking Studio** (Red Hat UBI 9, 화면+API 단일 컨테이너): [deploy/offline/README.md](deploy/offline/README.md) — `deploy/offline/build.sh <버전>`
+- **Milvus** (공식 v3.0.6 이미지 묶음): [deploy/offline-milvus/README.md](deploy/offline-milvus/README.md) — `deploy/offline-milvus/build.sh`
+
 ## 주요 API
 
 | 용도 | API |

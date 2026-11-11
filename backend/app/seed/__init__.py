@@ -98,7 +98,7 @@ def seed_vectors(db: Session) -> None:
         db.commit()
     if not db.scalar(select(VectorStore)):
         db.add_all([
-            VectorStore(name="Milvus 로컬", kind="milvus", uri="http://localhost:19530"),
+            VectorStore(name="Milvus 로컬", kind="milvus", uri=settings.milvus_uri),
             VectorStore(name="메모리 (개발용)", kind="memory"),
         ])
         db.commit()

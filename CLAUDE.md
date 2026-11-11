@@ -21,6 +21,7 @@ RAG 청킹 품질을 실험·검증·운영하는 UI 기반 솔루션. 상세 �
 - 백엔드 테스트: `cd backend && uv run pytest` (실제 Milvus 포함: `CS_TEST_MILVUS_URI=http://localhost:19530`)
 - 프론트 빌드(타입 체크 포함): `cd frontend && npm run build`
 - 실행 설정: `.claude/launch.json` (backend :8000, frontend :5173)
+- 폐쇄망 이미지: `deploy/offline/build.sh <버전>` (Studio, UBI 9), `deploy/offline-milvus/build.sh` (Milvus 묶음). 결과물은 `dist/` (git 제외).
 
 ## 작업 규칙
 - 문서·커뮤니케이션은 한국어.
