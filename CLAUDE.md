@@ -10,8 +10,15 @@ RAG 청킹 품질을 실험·검증·운영하는 UI 기반 솔루션. 상세 �
 - 평가: RAGAS 자동 평가 + LLM 기반 평가 데이터셋 자동 생성 (dev/test 분리).
 
 ## 현재 상태
-- 요구사항 v0.2만 존재. 기술 스택 미정.
+- 기술 스택: backend FastAPI + SQLAlchemy (uv, Python 3.12), frontend React + TypeScript + Vite.
+- MVP(requirements 9장) 구현: 표준 스키마, Parser Registry, 파싱 결과 뷰어, 모델 레지스트리, 청킹 Playground.
+- 2단계(실험 비교, RAGAS 평가, 데이터셋 생성)는 미구현.
 - 결정·미결 사항은 `docs/requirements.md` 10장 참고.
+
+## 개발 명령
+- 백엔드 테스트: `cd backend && uv run pytest`
+- 프론트 빌드(타입 체크 포함): `cd frontend && npm run build`
+- 실행 설정: `.claude/launch.json` (backend :8000, frontend :5173)
 
 ## 작업 규칙
 - 문서·커뮤니케이션은 한국어.

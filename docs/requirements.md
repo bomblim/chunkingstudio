@@ -329,4 +329,4 @@ question, reference_answer, reference_contexts, **source_element_ids / page / bb
 5. 운영 중인 RAG 검색·생성 설정
 6. Judge LLM 선정
 7. 데이터셋 목표 규모 및 검수 인력
-8. 기술 스택
+8. ~~기술 스택~~ → FastAPI + React(TypeScript) 확정
