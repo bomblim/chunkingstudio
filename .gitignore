@@ -16,6 +16,7 @@ frontend/dist/
 
 # 기타
 .DS_Store
+/test/
 
 # Milvus 로컬 데이터
 deploy/milvus/volumes/
