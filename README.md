@@ -46,6 +46,16 @@ cd backend && uv run pytest
 
 ### 환경변수 (backend)
 
+`backend/.env.example`을 `backend/.env`로 복사해 값을 채우면 서버 시작 시 자동으로 읽습니다.
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+- `.env`는 git에 커밋되지 않습니다 (`.gitignore`). API 키는 이 파일이나 OS 환경변수에만 두세요.
+- 셸·OS에 이미 설정된 값이 `.env`보다 우선합니다. 값을 바꾼 뒤에는 서버를 재시작하세요.
+- 다른 파일을 쓰려면 `CS_ENV_FILE`에 경로를 지정합니다 (빈 값이면 로드하지 않음).
+
 | 이름 | 기본값 | 설명 |
 |---|---|---|
 | `CS_DATA_DIR` | `./data` | DB·업로드 파일·Parser 원본 응답 저장 위치 |

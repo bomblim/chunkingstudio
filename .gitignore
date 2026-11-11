@@ -9,5 +9,10 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 
+# 환경변수 (API 키 등 비밀값) — 예시 파일만 커밋
+.env
+.env.*
+!.env.example
+
 # 기타
 .DS_Store

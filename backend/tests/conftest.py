@@ -6,6 +6,7 @@ import tempfile
 # 설정은 import 시점에 읽으므로 앱 import 전에 임시 데이터 디렉터리를 지정한다.
 _tmp = tempfile.mkdtemp(prefix="cs-test-")
 os.environ["CS_DATA_DIR"] = _tmp
+os.environ["CS_ENV_FILE"] = ""  # 로컬 backend/.env가 테스트에 섞이지 않도록
 os.environ.setdefault("CS_PUBLIC_BASE_URL", "http://testserver")
 
 import pytest  # noqa: E402
