@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { chunkColor } from '../colors'
 import { TableView } from '../components/ElementViews'
@@ -276,7 +276,7 @@ export default function PlaygroundPage() {
 
         {/* ------------------------------------------------ 가운데: 문서 뷰 */}
         <section className="pg-pane" aria-label="청크 경계 문서 뷰">
-          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 #{run.id}</span>}</h3>
+          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 #{run.id}</span>}{run?.status === 'done' && <Link to={`/indexes?run=${run.id}`} className="small" style={{ marginLeft: 'auto' }}>벡터 DB 적재 →</Link>}</h3>
           {active && <ProgressBar run={run} />}
           {run?.status === 'failed' && <div className="banner err"><pre>{run.error}</pre></div>}
           <ChunkedDocument elements={elements} run={run} />

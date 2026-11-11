@@ -12,11 +12,12 @@ RAG 청킹 품질을 실험·검증·운영하는 UI 기반 솔루션. 상세 �
 ## 현재 상태
 - 기술 스택: backend FastAPI + SQLAlchemy (uv, Python 3.12), frontend React + TypeScript + Vite.
 - MVP(requirements 9장) 구현: 표준 스키마, Parser Registry, 파싱 결과 뷰어, 모델 레지스트리, 청킹 Playground.
+- 벡터 검색: 임베딩 모델 레지스트리(OpenAI 호환·Mock), 벡터 저장소(Milvus·메모리), 청크 적재·질의 테스트. 로컬 Milvus는 `deploy/milvus/docker-compose.yml` (v3.0.6, pymilvus 3.x).
 - 2단계(실험 비교, RAGAS 평가, 데이터셋 생성)는 미구현.
 - 결정·미결 사항은 `docs/requirements.md` 10장 참고.
 
 ## 개발 명령
-- 백엔드 테스트: `cd backend && uv run pytest`
+- 백엔드 테스트: `cd backend && uv run pytest` (실제 Milvus 포함: `CS_TEST_MILVUS_URI=http://localhost:19530`)
 - 프론트 빌드(타입 체크 포함): `cd frontend && npm run build`
 - 실행 설정: `.claude/launch.json` (backend :8000, frontend :5173)
 

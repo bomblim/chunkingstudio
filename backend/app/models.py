@@ -177,3 +177,64 @@ class ChunkRun(TimestampMixin, Base):
     totals: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     feedback: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # chunk_id → up/down
     error: Mapped[str] = mapped_column(Text, default="")
+
+
+# ---------------------------------------------------------------- Embedding / Vector store
+class EmbeddingModel(TimestampMixin, Base):
+    __tablename__ = "embedding_models"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    # openai_compatible(/v1/embeddings: TEI·vLLM·Ollama·상용) | mock
+    provider: Mapped[str] = mapped_column(String(50))
+    engine: Mapped[str] = mapped_column(String(50), default="")
+    base_url: Mapped[str] = mapped_column(String(1000), default="")
+    model_id: Mapped[str] = mapped_column(String(300))
+    api_key_env: Mapped[str] = mapped_column(String(200), default="")
+    is_external: Mapped[bool] = mapped_column(Boolean, default=False)
+    dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 헬스체크/첫 적재 시 자동 확인
+    max_input_tokens: Mapped[int] = mapped_column(Integer, default=8192)
+    # 질의/문서 앞에 붙일 지시문 (e5: "query: ", Qwen3-Embedding: "Instruct: ...\nQuery: " 등)
+    query_prefix: Mapped[str] = mapped_column(Text, default="")
+    document_prefix: Mapped[str] = mapped_column(Text, default="")
+    batch_size: Mapped[int] = mapped_column(Integer, default=32)
+    extra_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class VectorStore(TimestampMixin, Base):
+    __tablename__ = "vector_stores"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    kind: Mapped[str] = mapped_column(String(30))  # milvus | memory
+    uri: Mapped[str] = mapped_column(String(1000), default="")
+    token_env: Mapped[str] = mapped_column(String(200), default="")  # "user:password" 또는 API 키
+    db_name: Mapped[str] = mapped_column(String(200), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class VectorIndex(TimestampMixin, Base):
+    """청킹 실행 결과를 임베딩해 벡터 저장소 컬렉션에 적재한 단위."""
+
+    __tablename__ = "vector_indexes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    store_id: Mapped[int] = mapped_column(ForeignKey("vector_stores.id"))
+    collection: Mapped[str] = mapped_column(String(255))
+    embedding_model_id: Mapped[int] = mapped_column(ForeignKey("embedding_models.id"))
+    # 임베딩할 텍스트 템플릿: {text} {title} {summary} {keywords} {section_path} {document_title}
+    embed_template: Mapped[str] = mapped_column(Text, default="{text}")
+    metric: Mapped[str] = mapped_column(String(20), default="COSINE")
+    dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    run_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    # queued | running | done | failed
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    progress: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    warnings: Mapped[list[str]] = mapped_column(JSON, default=list)
+    stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")

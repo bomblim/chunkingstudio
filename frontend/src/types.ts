@@ -257,3 +257,81 @@ export interface PromptPreview {
   estimated_windows: number
   estimated_input_tokens: number
 }
+
+export interface EmbeddingModel {
+  id: number
+  name: string
+  provider: 'openai_compatible' | 'mock'
+  engine: string
+  base_url: string
+  model_id: string
+  api_key_env: string
+  is_external: boolean
+  dimension: number | null
+  max_input_tokens: number
+  query_prefix: string
+  document_prefix: string
+  batch_size: number
+  extra_params: Record<string, unknown>
+  enabled: boolean
+  blocked: boolean
+  last_health: { ok?: boolean; message?: string; dimension?: number; latency_ms?: number; checked_at?: string }
+}
+
+export interface VectorStore {
+  id: number
+  name: string
+  kind: 'milvus' | 'memory'
+  uri: string
+  token_env: string
+  db_name: string
+  enabled: boolean
+  last_health: { ok?: boolean; message?: string; server_version?: string; collections?: string[]; latency_ms?: number; checked_at?: string }
+}
+
+export interface VectorIndex {
+  id: number
+  name: string
+  store_id: number
+  store_name: string
+  store_kind: string
+  collection: string
+  embedding_model_id: number
+  embedding_model_name: string
+  embed_template: string
+  metric: string
+  dimension: number | null
+  run_ids: number[]
+  status: 'queued' | 'running' | 'done' | 'failed'
+  progress: { phase?: string; done?: number; total?: number }
+  chunk_count: number
+  warnings: string[]
+  stats: { last_run_id?: number; inserted?: number; embed_ms?: number; insert_ms?: number; embed_tokens?: number | null }
+  error: string
+  created_at: string
+}
+
+export interface SearchHit {
+  id: string
+  score: number
+  chunk_id: string
+  run_id: number
+  document_id: number
+  title: string
+  section_path: string
+  text: string
+  embed_text: string
+  metadata: {
+    document_title?: string; element_ids?: string[]; pages?: number[]; tokens?: number; summary?: string
+    keywords?: string[]; prompt_version?: number | null; llm_model?: string | null; method?: string; text_truncated?: boolean
+  }
+}
+
+export interface QueryResult {
+  query: string
+  embed_ms: number
+  search_ms: number
+  metric: string
+  warnings: string[]
+  hits: SearchHit[]
+}

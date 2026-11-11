@@ -1,6 +1,6 @@
 import type {
-  ChunkSettings, DocumentDetail, DocumentSummary, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
-  PromptVersion, RunDetail, RunSummary,
+  ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
+  PromptVersion, QueryResult, RunDetail, RunSummary, VectorIndex, VectorStore,
 } from './types'
 
 export class ApiError extends Error {
@@ -101,4 +101,28 @@ export const api = {
   deleteRun: (id: number) => del(`/api/runs/${id}`),
   feedback: (runId: number, chunkId: string, value: 'up' | 'down' | null) =>
     post<RunDetail['feedback']>(`/api/runs/${runId}/feedback`, { chunk_id: chunkId, value }),
+}
+
+export type EmbeddingModelInput = Omit<EmbeddingModel, 'id' | 'last_health' | 'blocked'>
+export type VectorStoreInput = Omit<VectorStore, 'id' | 'last_health'>
+
+export const vapi = {
+  embeddingModels: (usableOnly = false) => get<EmbeddingModel[]>(`/api/embedding-models${qs({ usable_only: usableOnly })}`),
+  createEmbeddingModel: (m: EmbeddingModelInput) => post<EmbeddingModel>('/api/embedding-models', m),
+  updateEmbeddingModel: (id: number, m: EmbeddingModelInput) => put<EmbeddingModel>(`/api/embedding-models/${id}`, m),
+  embeddingHealth: (id: number) => post<EmbeddingModel['last_health']>(`/api/embedding-models/${id}/health`),
+
+  vectorStores: () => get<VectorStore[]>('/api/vector-stores'),
+  createVectorStore: (s: VectorStoreInput) => post<VectorStore>('/api/vector-stores', s),
+  updateVectorStore: (id: number, s: VectorStoreInput) => put<VectorStore>(`/api/vector-stores/${id}`, s),
+  vectorStoreHealth: (id: number) => post<VectorStore['last_health']>(`/api/vector-stores/${id}/health`),
+
+  indexMeta: () => get<{ templates: { label: string; template: string }[]; template_fields: string[]; metrics: string[]; modes: string[] }>('/api/indexes/meta'),
+  indexes: () => get<VectorIndex[]>('/api/indexes'),
+  index: (id: number) => get<VectorIndex>(`/api/indexes/${id}`),
+  createIndex: (body: { run_id: number; store_id: number; embedding_model_id: number; collection: string; name?: string; embed_template: string; metric: string; mode: string }) =>
+    post<VectorIndex>('/api/indexes', body),
+  appendRun: (id: number, runId: number) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
+  deleteIndex: (id: number, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
+  query: (id: number, body: { query: string; top_k: number; filter: string }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }

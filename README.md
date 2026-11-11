@@ -18,10 +18,14 @@ backend/   FastAPI + SQLAlchemy (SQLite 기본, CS_DATABASE_URL로 PostgreSQL �
   app/parser_client.py   UI 테스트용 Parser REST API 호출 (sync / async 폴링)
   app/llm/               LLM Gateway: OpenAI 호환(vLLM·TGI·SGLang·Ollama·상용), Anthropic, Mock
   app/chunking/          경계 기반 청킹 엔진 (윈도잉·Stitching·검증·repair·fallback)
+  app/embeddings.py      임베딩 호출: OpenAI 호환 /v1/embeddings (TEI·vLLM·Ollama·상용), Mock
+  app/vectorstores.py    벡터 저장소: Milvus, 메모리(개발용)
+  app/indexing.py        청크 → 임베딩 → 컬렉션 적재, 질의
   app/api/               REST API
   app/sample_parser.py   개발용 샘플 Parser (.md .txt .pdf)
 frontend/  React + TypeScript + Vite
-  src/pages/             문서·뷰어·Playground·프롬프트·Parser·모델 화면
+  src/pages/             문서·뷰어·Playground·프롬프트·Parser·모델·임베딩·벡터 인덱스 화면
+deploy/milvus/           개발용 Milvus standalone docker compose (v3.0.6)
 ```
 
 ## 개발 환경 실행
@@ -38,11 +42,32 @@ cd frontend && npm install && npm run dev
 
 브라우저에서 http://localhost:5173 을 엽니다. 첫 실행 시 샘플 Parser, Mock 모델, 기본 프롬프트, 샘플 문서가 자동 등록되어 LLM 없이도 전체 흐름을 확인할 수 있습니다.
 
+### 벡터 검색 (임베딩 → Milvus → 질의)
+
+로컬 Milvus를 띄웁니다 (Docker 필요, 데이터는 `deploy/milvus/volumes/`에 저장).
+
+```bash
+docker compose -f deploy/milvus/docker-compose.yml up -d
+```
+
+1. **임베딩 모델**에서 사용할 모델을 등록·활성화하고 헬스체크로 차원을 확인합니다. 오프라인 확인용 Mock 임베딩이 기본 등록되어 있습니다. TEI 예시는 다음과 같이 띄웁니다.
+
+   ```bash
+   docker run --gpus all -p 8080:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id BAAI/bge-m3
+   ```
+
+2. **Playground**에서 청킹을 실행한 뒤 "벡터 DB 적재 →"를 누르거나, **벡터 인덱스·질의**에서 "청크 적재"를 누릅니다.
+3. 적재가 끝나면 같은 화면의 **질의 테스트**에서 검색 결과(점수·청크 원문·위치)를 확인합니다. Milvus는 `run_id == 3` 같은 필터도 쓸 수 있습니다.
+
+컬렉션 필드: `id`, `vector`, `chunk_id`, `run_id`, `document_id`, `title`, `section_path`, `text`(청크 원문), `embed_text`(실제로 임베딩한 텍스트), `metadata`(JSON: element_ids, pages, tokens, 프롬프트 버전 등).
+
 테스트:
 
 ```bash
 cd backend && uv run pytest
 ```
+
+실제 Milvus까지 포함하려면 `CS_TEST_MILVUS_URI=http://localhost:19530`을 설정하고 실행합니다.
 
 ### 환경변수 (backend)
 

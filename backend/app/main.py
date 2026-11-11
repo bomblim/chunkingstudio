@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import dev, documents, llm_models, parsers, prompts, runs
+from .api import dev, documents, llm_models, parsers, prompts, runs, vectors
 from .config import settings
 from .db import Base, SessionLocal, engine
 
@@ -27,7 +27,7 @@ app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["*"],
     allow_headers=["*"],
 )
-for r in (parsers.router, documents.router, llm_models.router, prompts.router, runs.router):
+for r in (parsers.router, documents.router, llm_models.router, prompts.router, runs.router, vectors.router):
     app.include_router(r)
 if settings.enable_sample_parser:
     app.include_router(dev.router)

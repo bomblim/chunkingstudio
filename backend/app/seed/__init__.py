@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .. import sample_parser
 from ..chunking import prompting
 from ..config import settings
-from ..models import Document, LLMModel, Parser, Prompt, PromptVersion
+from ..models import Document, EmbeddingModel, LLMModel, Parser, Prompt, PromptVersion, VectorStore
 from ..services import save_document, sha256, store_file
 
 SAMPLE = Path(__file__).with_name("sample_policy.md")
@@ -67,3 +67,37 @@ def seed(db: Session) -> None:
         path = store_file(data, SAMPLE.name)
         save_document(db, doc, parser=parser, title="사내 원격근무 운영 지침 (샘플)", source="test",
                       file_hash=sha256(data), source_file_path=str(path), doc_type="사내 규정")
+
+    seed_vectors(db)
+
+
+QWEN3_QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+
+
+def seed_vectors(db: Session) -> None:
+    """임베딩 모델·벡터 저장소 기본값 (기존 DB에도 테이블이 비어 있으면 추가)."""
+    if not db.scalar(select(EmbeddingModel)):
+        db.add_all([
+            EmbeddingModel(name="Mock 임베딩 (오프라인)", provider="mock", engine="mock", model_id="mock-hash-256",
+                           dimension=256, max_input_tokens=8192),
+            EmbeddingModel(name="bge-m3 (TEI 예시)", provider="openai_compatible", engine="tei",
+                           base_url="http://localhost:8080/v1", model_id="BAAI/bge-m3", dimension=1024,
+                           max_input_tokens=8192, enabled=False),
+            EmbeddingModel(name="KURE-v1 (vLLM 예시)", provider="openai_compatible", engine="vllm",
+                           base_url="http://localhost:8002/v1", model_id="nlpai-lab/KURE-v1", dimension=1024,
+                           max_input_tokens=8192, enabled=False),
+            EmbeddingModel(name="Qwen3-Embedding-0.6B (vLLM 예시)", provider="openai_compatible", engine="vllm",
+                           base_url="http://localhost:8003/v1", model_id="Qwen/Qwen3-Embedding-0.6B",
+                           dimension=1024, max_input_tokens=32768, query_prefix=QWEN3_QUERY_PREFIX, enabled=False),
+            EmbeddingModel(name="OpenAI text-embedding-3-large (예시)", provider="openai_compatible", engine="openai",
+                           base_url="https://api.openai.com/v1", model_id="text-embedding-3-large",
+                           api_key_env="OPENAI_API_KEY", is_external=True, dimension=3072, max_input_tokens=8191,
+                           enabled=False),
+        ])
+        db.commit()
+    if not db.scalar(select(VectorStore)):
+        db.add_all([
+            VectorStore(name="Milvus 로컬", kind="milvus", uri="http://localhost:19530"),
+            VectorStore(name="메모리 (개발용)", kind="memory"),
+        ])
+        db.commit()
