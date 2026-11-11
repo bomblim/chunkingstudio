@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, papi } from '../api'
 import { chunkColor } from '../colors'
 import { TableView } from '../components/ElementViews'
 import { TemplateEditor } from '../components/TemplateEditor'
@@ -70,6 +70,49 @@ export default function PlaygroundPage() {
   useEffect(() => {
     if (!docId && docs.data?.length) setParam('doc', docs.data[0].id)
   }, [docs.data, docId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------- 프로젝트 청킹 프로파일
+  const projectId = doc.data?.project_id ?? null
+  const project = useAsync(() => (projectId ? papi.project(projectId) : Promise.resolve(undefined)), [projectId])
+  const [appliedFor, setAppliedFor] = useState<number>()
+  const [projectNotice, setProjectNotice] = useState('')
+  useEffect(() => {
+    // 문서를 바꿀 때마다 한 번, 문서가 속한 프로젝트의 (상속 포함) 프로파일을 기본값으로 적용
+    const p = project.data
+    if (!p || !docId || appliedFor === docId || !prompts.data || !models.data || p.id !== projectId) return
+    const eff = p.effective
+    if (eff.method) setMethod(eff.method)
+    else if (eff.prompt_id && eff.model_id) setMethod('llm')
+    if (eff.prompt_id) { setPromptId(eff.prompt_id); setVersionId(eff.resolved_prompt_version_id ?? undefined) }
+    if (eff.model_id && models.data.some((m) => m.id === eff.model_id)) setModelId(eff.model_id)
+    if (eff.params) setParams(eff.params as typeof params)
+    setSettings({ ...DEFAULT_SETTINGS, ...(eff.settings ?? {}), doc_type: eff.doc_type ?? '', scope: { mode: 'all' } })
+    setAppliedFor(docId)
+  }, [project.data, docId, prompts.data, models.data, appliedFor, projectId])
+
+  const saveToProject = async () => {
+    const p = project.data
+    if (!p) return
+    if (!confirm(`현재 설정을 '${p.path.join(' / ')}' 프로젝트의 청킹 프로파일로 저장할까요?\n하위 프로젝트 중 따로 지정하지 않은 곳에도 적용됩니다.`)) return
+    setError('')
+    try {
+      await papi.updateProject(p.id, {
+        name: p.name, description: p.description, parent_id: p.parent_id, sort_order: p.sort_order,
+        method,
+        prompt_id: method === 'llm' ? promptId ?? null : p.prompt_id,
+        prompt_version_id: method === 'llm' ? versionId ?? null : p.prompt_version_id,
+        model_id: method === 'llm' ? modelId ?? null : p.model_id,
+        params: Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')),
+        settings: { max_tokens: settings.max_tokens, min_tokens: settings.min_tokens, window_tokens: settings.window_tokens,
+                    exclude_types: settings.exclude_types, retries: settings.retries, auto_fix: settings.auto_fix },
+        doc_type: settings.doc_type || p.doc_type,
+      })
+      await project.reload()
+      setProjectNotice('프로젝트 프로파일에 저장했습니다')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   // ---------------------------------------------------------------- 실행 결과
   const [run, setRun] = useState<RunDetail>()
@@ -160,7 +203,7 @@ export default function PlaygroundPage() {
         </div>
         <label className="field" style={{ minWidth: 280 }}>문서
           <select value={docId ?? ''} onChange={(e) => { setParam('run'); setParam('doc', Number(e.target.value)) }}>
-            {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.title} (#{d.id}, {d.stats.element_count}개)</option>)}
+            {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.project_path?.length ? `[${d.project_path.join(' / ')}] ` : ''}{d.title} (#{d.id}, {d.stats.element_count}개)</option>)}
           </select>
         </label>
       </div>
@@ -169,6 +212,16 @@ export default function PlaygroundPage() {
       <div className="pg">
         {/* ------------------------------------------------ 왼쪽: 프롬프트·모델·설정 */}
         <section className="pg-pane col" aria-label="프롬프트 설정">
+          {project.data && (
+            <div className="banner info small" style={{ margin: 0 }}>
+              <div>프로젝트 <b>{project.data.path.join(" / ")}</b>의 청킹 프로파일을 기본값으로 적용했습니다.</div>
+              <div className="row" style={{ marginTop: 4 }}>
+                <button className="sm" disabled={dirty && method === "llm"} title={dirty ? "프롬프트 수정 사항을 먼저 새 버전으로 저장하세요" : undefined} onClick={() => void saveToProject()}>현재 설정을 프로젝트에 저장</button>
+                <Link className="small" to={`/documents?project=${project.data.id}`}>프로젝트 문서 보기</Link>
+                {projectNotice && <span>{projectNotice}</span>}
+              </div>
+            </div>
+          )}
           <div className="row">
             <label className="check"><input type="radio" checked={method === 'llm'} onChange={() => setMethod('llm')} />LLM 시멘틱</label>
             <label className="check"><input type="radio" checked={method === 'rule_structure'} onChange={() => setMethod('rule_structure')} />규칙 baseline</label>

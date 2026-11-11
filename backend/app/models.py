@@ -66,8 +66,34 @@ class ParseJob(TimestampMixin, Base):
     elapsed_ms: Mapped[int] = mapped_column(Integer, default=0)
     raw_response_path: Mapped[str] = mapped_column(String(1000), default="")
     document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 파싱 완료 시 문서를 배정할 프로젝트
 
     parser: Mapped[Parser] = relationship()
+
+
+# ---------------------------------------------------------------- Projects
+class Project(TimestampMixin, Base):
+    """문서 분류 트리. 같은 프로젝트(및 하위)의 문서는 같은 청킹 프로파일을 쓴다.
+
+    프로파일 필드가 비어 있으면(None) 상위 프로젝트 값을 상속한다.
+    """
+
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # ---- 청킹 프로파일 (None = 상위에서 상속)
+    method: Mapped[str | None] = mapped_column(String(30), nullable=True)  # llm | rule_structure
+    prompt_id: Mapped[int | None] = mapped_column(ForeignKey("prompts.id"), nullable=True)
+    # 고정할 프롬프트 버전. None이면 실행 시점의 운영(production) 버전, 없으면 최신 버전
+    prompt_version_id: Mapped[int | None] = mapped_column(ForeignKey("prompt_versions.id"), nullable=True)
+    model_id: Mapped[int | None] = mapped_column(ForeignKey("llm_models.id"), nullable=True)
+    params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    settings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
 # ---------------------------------------------------------------- Documents
@@ -84,6 +110,7 @@ class Document(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(20), default="runtime")  # runtime | test
     doc_type: Mapped[str] = mapped_column(String(100), default="")
     revision: Mapped[int] = mapped_column(Integer, default=1)  # 재파싱 시 누적(IN-05)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSON)  # StandardDocument
     stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 

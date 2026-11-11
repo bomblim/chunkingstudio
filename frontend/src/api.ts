@@ -1,6 +1,6 @@
 import type {
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
-  PromptVersion, QueryResult, RunDetail, RunSummary, VectorIndex, VectorStore,
+  Project, ProjectTree, PromptVersion, QueryResult, RunDetail, RunSummary, VectorIndex, VectorStore,
 } from './types'
 
 export class ApiError extends Error {
@@ -54,7 +54,7 @@ export type VersionInput = Pick<PromptVersion, 'system_template' | 'user_templat
 
 export const api = {
   // documents
-  documents: (f: { parser_id?: number; source?: string; q?: string } = {}) =>
+  documents: (f: { parser_id?: number; source?: string; q?: string; project_id?: number; unassigned?: boolean; include_descendants?: boolean } = {}) =>
     get<DocumentSummary[]>(`/api/documents${qs(f)}`),
   document: (id: number) => get<DocumentDetail>(`/api/documents/${id}`),
   deleteDocument: (id: number) => del(`/api/documents/${id}`),
@@ -125,4 +125,20 @@ export const vapi = {
   appendRun: (id: number, runId: number) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
   deleteIndex: (id: number, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
   query: (id: number, body: { query: string; top_k: number; filter: string }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
+}
+
+export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type'>
+
+export const papi = {
+  projects: () => get<ProjectTree>('/api/projects'),
+  project: (id: number) => get<Project>(`/api/projects/${id}`),
+  createProject: (p: Partial<ProjectInput> & { name: string }) => post<Project>('/api/projects', p),
+  updateProject: (id: number, p: ProjectInput) => put<Project>(`/api/projects/${id}`, p),
+  deleteProject: (id: number, moveToParent: boolean) => del(`/api/projects/${id}${qs({ move_to_parent: moveToParent })}`),
+  runAll: (id: number, body: { include_descendants: boolean; only_without_run: boolean }) =>
+    post<{ run_ids: number[]; document_count: number; method: string }>(`/api/projects/${id}/run-all`, body),
+  moveDocuments: (documentIds: number[], projectId: number | null) =>
+    post<{ moved: number }>('/api/documents/move', { document_ids: documentIds, project_id: projectId }),
+  patchDocument: (id: number, body: { title?: string; doc_type?: string; project_id?: number; clear_project?: boolean }) =>
+    patch<DocumentSummary>(`/api/documents/${id}`, body),
 }

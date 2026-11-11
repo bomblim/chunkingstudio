@@ -46,6 +46,7 @@ def ingest_payload(
     file_hash: str = "",
     source_file_path: str = "",
     doc_type: str = "",
+    project_id: int | None = None,
 ) -> Document:
     """Parser 출력 → 어댑터 → 표준 스키마 검증 → 저장. 실패 시 격리 후 AdapterError."""
     adapter = parser.adapter if parser else "standard"
@@ -59,7 +60,7 @@ def ingest_payload(
         db.commit()
         raise
     return save_document(db, doc, parser=parser, title=title, source=source, file_hash=file_hash,
-                         source_file_path=source_file_path, doc_type=doc_type)
+                         source_file_path=source_file_path, doc_type=doc_type, project_id=project_id)
 
 
 def save_document(
@@ -72,6 +73,7 @@ def save_document(
     file_hash: str = "",
     source_file_path: str = "",
     doc_type: str = "",
+    project_id: int | None = None,
 ) -> Document:
     file_hash = file_hash or doc.file_hash or sha256(doc.model_dump_json().encode())
     doc.file_hash = file_hash
@@ -93,6 +95,7 @@ def save_document(
         source=source,
         doc_type=doc_type,
         revision=(prev or 0) + 1,
+        project_id=project_id,
         content=doc.model_dump(mode="json"),
         stats=compute_stats(doc),
     )
@@ -131,6 +134,7 @@ def execute_parse_job(job_id: int, file_path: str, params: dict[str, Any], doc_t
             doc = ingest_payload(
                 db, parser=parser, payload=result.payload, title=job.file_name, source="test",
                 file_hash=job.file_hash, source_file_path=file_path, doc_type=doc_type,
+                project_id=job.project_id,
             )
         except AdapterError as exc:
             job.status, job.error_kind, job.error = "failed", "adapter_error", str(exc)

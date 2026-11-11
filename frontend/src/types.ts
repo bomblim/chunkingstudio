@@ -56,6 +56,9 @@ export interface DocumentSummary {
   source: 'runtime' | 'test'
   doc_type: string
   revision: number
+  project_id: number | null
+  project_path?: string[]
+  last_run?: { id: number; status: string; method: string; chunk_count: number | null; ok: boolean | null; created_at: string }
   stats: DocStats
   created_at: string
 }
@@ -345,4 +348,38 @@ export interface UpstageConfig {
   include?: string
   poll_interval_sec?: number
   extra_body?: Record<string, unknown>
+}
+
+export interface ProjectProfile {
+  method: 'llm' | 'rule_structure' | null
+  prompt_id: number | null
+  prompt_version_id: number | null
+  model_id: number | null
+  params: Record<string, unknown> | null
+  settings: Partial<ChunkSettings> | null
+  doc_type: string | null
+}
+
+export interface Project extends ProjectProfile {
+  id: number
+  name: string
+  description: string
+  parent_id: number | null
+  sort_order: number
+  path: string[]
+  doc_count: number
+  total_doc_count: number
+  effective: ProjectProfile & {
+    sources: Record<string, number>
+    source_names: Record<string, string>
+    resolved_prompt_version_id: number | null
+    resolved_prompt_label: string | null
+    model_name: string | null
+  }
+}
+
+export interface ProjectTree {
+  projects: Project[]
+  unassigned_count: number
+  total_count: number
 }

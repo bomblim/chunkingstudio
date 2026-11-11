@@ -43,28 +43,46 @@ def _summary(r: ChunkRun) -> dict[str, Any]:
     return d
 
 
-@router.post("", status_code=202)
-def start_run(body: RunIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
-    document = get_or_404(db, Document, body.document_id)
+def create_run(
+    db: Session,
+    document: Document,
+    method: str,
+    prompt_version_id: int | None,
+    model_id: int | None,
+    params: dict[str, Any],
+    settings: dict[str, Any],
+    extra_snapshot: dict[str, Any] | None = None,
+) -> ChunkRun:
+    """실행 레코드 생성(검증 포함). 실제 실행은 호출 측이 execute_run으로 예약한다."""
     model = pv = None
-    if body.method == "llm":
-        if not body.model_id or not body.prompt_version_id:
+    if method == "llm":
+        if not model_id or not prompt_version_id:
             raise HTTPException(400, "LLM 청킹에는 model_id와 prompt_version_id가 필요합니다")
-        model = get_or_404(db, LLMModel, body.model_id)
-        pv = get_or_404(db, PromptVersion, body.prompt_version_id)
+        model = get_or_404(db, LLMModel, model_id)
+        pv = get_or_404(db, PromptVersion, prompt_version_id)
         try:
             ensure_allowed(model)
         except LLMError as exc:
             raise HTTPException(400, str(exc)) from exc
-    elif body.method != "rule_structure":
-        raise HTTPException(400, f"알 수 없는 method: {body.method}")
-    cs = ChunkSettings.from_dict({"doc_type": document.doc_type, **body.settings})
+    elif method != "rule_structure":
+        raise HTTPException(400, f"알 수 없는 method: {method}")
+    cs = ChunkSettings.from_dict({"doc_type": document.doc_type, **(settings or {})})
+    snapshot = run_snapshot(model, pv, document)
+    if extra_snapshot:
+        snapshot.update(extra_snapshot)
     run = ChunkRun(
         document_id=document.id, prompt_version_id=pv.id if pv else None, model_id=model.id if model else None,
-        method=body.method, params=body.params, settings=cs.to_dict(), snapshot=run_snapshot(model, pv, document),
+        method=method, params=params or {}, settings=cs.to_dict(), snapshot=snapshot,
     )
     db.add(run)
     db.commit()
+    return run
+
+
+@router.post("", status_code=202)
+def start_run(body: RunIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
+    document = get_or_404(db, Document, body.document_id)
+    run = create_run(db, document, body.method, body.prompt_version_id, body.model_id, body.params, body.settings)
     background.add_task(execute_run, run.id)
     return _summary(run)
 

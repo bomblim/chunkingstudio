@@ -13,15 +13,30 @@ from sqlalchemy.orm import Session
 
 from ..adapters import AdapterError
 from ..db import get_db
-from ..models import Document, IngestFailure, Parser, ParseJob
+from ..models import ChunkRun, Document, IngestFailure, Parser, ParseJob, Project
+from ..projects import descendant_ids, load_tree, path_names
 from ..services import execute_parse_job, ingest_payload, sha256, store_file
 from . import get_or_404, row_dict
 
 router = APIRouter(prefix="/api", tags=["documents"])
 
 
-def _summary(d: Document) -> dict[str, Any]:
-    return row_dict(d, exclude={"content"})
+def _summary(d: Document, tree: dict[int, Project] | None = None, last_run: ChunkRun | None = None) -> dict[str, Any]:
+    out = row_dict(d, exclude={"content"})
+    if tree is not None:
+        out["project_path"] = path_names(tree, d.project_id)
+    if last_run is not None:
+        out["last_run"] = {"id": last_run.id, "status": last_run.status, "method": last_run.method,
+                           "chunk_count": (last_run.totals or {}).get("chunk_count"),
+                           "ok": (last_run.validation or {}).get("ok"), "created_at": last_run.created_at}
+    return out
+
+
+def _check_project(db: Session, project_id: int | None) -> int | None:
+    if project_id in (None, 0):
+        return None
+    get_or_404(db, Project, project_id)
+    return project_id
 
 
 @router.get("/documents")
@@ -29,13 +44,23 @@ def list_documents(
     parser_id: int | None = None,
     source: str | None = None,
     q: str | None = None,
+    project_id: int | None = None,
+    unassigned: bool = False,
+    include_descendants: bool = True,
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """project_id를 주면 해당 프로젝트(기본: 하위 포함) 문서만, unassigned=true면 미분류 문서만."""
+    tree = load_tree(db)
     stmt = select(Document).order_by(Document.id.desc())
     if parser_id:
         stmt = stmt.where(Document.parser_id == parser_id)
     if source:
         stmt = stmt.where(Document.source == source)
+    if unassigned:
+        stmt = stmt.where(Document.project_id.is_(None))
+    elif project_id:
+        ids = descendant_ids(tree, project_id) if include_descendants else {project_id}
+        stmt = stmt.where(Document.project_id.in_(ids))
     rows = list(db.scalars(stmt))
     if q:
         ql = q.lower()
@@ -43,7 +68,49 @@ def list_documents(
             d for d in rows
             if ql in d.title.lower() or any(ql in (e.get("text") or "").lower() for e in d.content.get("elements", []))
         ]
-    return [_summary(d) for d in rows]
+    last: dict[int, ChunkRun] = {}
+    if rows:
+        for r in db.scalars(select(ChunkRun).where(ChunkRun.document_id.in_([d.id for d in rows]))
+                            .order_by(ChunkRun.id)):
+            last[r.document_id] = r
+    return [_summary(d, tree, last.get(d.id)) for d in rows]
+
+
+class DocumentPatch(BaseModel):
+    title: str | None = None
+    doc_type: str | None = None
+    project_id: int | None = None
+    clear_project: bool = False  # true면 미분류로
+
+
+class MoveIn(BaseModel):
+    document_ids: list[int]
+    project_id: int | None = None  # None이면 미분류로
+
+
+@router.patch("/documents/{doc_id}")
+def patch_document(doc_id: int, body: DocumentPatch, db: Session = Depends(get_db)) -> dict[str, Any]:
+    d = get_or_404(db, Document, doc_id)
+    if body.title is not None:
+        d.title = body.title
+    if body.doc_type is not None:
+        d.doc_type = body.doc_type
+    if body.clear_project:
+        d.project_id = None
+    elif body.project_id is not None:
+        d.project_id = _check_project(db, body.project_id)
+    db.commit()
+    return _summary(d, load_tree(db))
+
+
+@router.post("/documents/move")
+def move_documents(body: MoveIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+    target = _check_project(db, body.project_id)
+    docs = list(db.scalars(select(Document).where(Document.id.in_(body.document_ids))))
+    for d in docs:
+        d.project_id = target
+    db.commit()
+    return {"moved": len(docs), "project_id": target}
 
 
 @router.get("/documents/{doc_id}")
@@ -51,6 +118,7 @@ def get_document(doc_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     d = get_or_404(db, Document, doc_id)
     out = row_dict(d)
     out["has_source_file"] = bool(d.source_file_path and Path(d.source_file_path).exists())
+    out["project_path"] = path_names(load_tree(db), d.project_id)
     out["revisions"] = [
         {"id": r.id, "revision": r.revision, "created_at": r.created_at}
         for r in db.scalars(
@@ -83,6 +151,7 @@ class IngestIn(BaseModel):
     payload: Any
     doc_type: str = ""
     file_hash: str = ""
+    project_id: int | None = None
 
 
 @router.post("/ingest", status_code=201)
@@ -91,7 +160,8 @@ def ingest(body: IngestIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     parser = get_or_404(db, Parser, body.parser_id)
     try:
         doc = ingest_payload(db, parser=parser, payload=body.payload, title=body.title,
-                             doc_type=body.doc_type, file_hash=body.file_hash)
+                             doc_type=body.doc_type, file_hash=body.file_hash,
+                             project_id=_check_project(db, body.project_id))
     except AdapterError as exc:
         raise HTTPException(422, str(exc)) from exc
     return _summary(doc)
@@ -101,6 +171,7 @@ def ingest(body: IngestIn, db: Session = Depends(get_db)) -> dict[str, Any]:
 async def ingest_batch(
     parser_id: int = Form(...),
     doc_type: str = Form(""),
+    project_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -109,6 +180,7 @@ async def ingest_batch(
     각 항목은 Parser 원본 출력이거나 {"title": ..., "payload": ...} 래퍼.
     """
     parser = get_or_404(db, Parser, parser_id)
+    project_id = _check_project(db, project_id)
     raw = (await file.read()).decode("utf-8-sig")
     name = file.filename or "batch"
     items: list[Any]
@@ -129,7 +201,8 @@ async def ingest_batch(
         elif isinstance(item, dict) and item.get("source_file"):
             title = item["source_file"]
         try:
-            ok.append(_summary(ingest_payload(db, parser=parser, payload=payload, title=title, doc_type=doc_type)))
+            ok.append(_summary(ingest_payload(db, parser=parser, payload=payload, title=title, doc_type=doc_type,
+                                              project_id=project_id)))
         except AdapterError as exc:
             failed.append({"title": title, "reason": str(exc)})
     return {"imported": ok, "failed": failed}
@@ -148,6 +221,7 @@ async def test_parse(
     parser_ids: str = Form(..., description="쉼표로 구분한 Parser ID"),
     params: str = Form("{}", description="Parser 파라미터 JSON"),
     doc_type: str = Form(""),
+    project_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """IN-02: 샘플 문서 업로드 → 선택한 Parser API를 직접 호출 → 표준 스키마로 변환."""
@@ -158,6 +232,7 @@ async def test_parse(
         param_obj = json.loads(params or "{}")
     except json.JSONDecodeError as exc:
         raise HTTPException(400, f"params JSON 오류: {exc}") from exc
+    project_id = _check_project(db, project_id)
     ids = [int(x) for x in parser_ids.split(",") if x.strip()]
     if not ids:
         raise HTTPException(400, "Parser를 하나 이상 선택하세요")
@@ -169,7 +244,8 @@ async def test_parse(
         if not parser.api_url:
             raise HTTPException(400, f"{parser.name}: API URL이 없는 결과 수신 전용 Parser입니다")
         job = ParseJob(parser_id=pid, file_name=file.filename or "upload", file_hash=digest,
-                       params=param_obj.get(str(pid), param_obj) if isinstance(param_obj, dict) else {})
+                       params=param_obj.get(str(pid), param_obj) if isinstance(param_obj, dict) else {},
+                       project_id=project_id)
         db.add(job)
         db.commit()
         background.add_task(execute_parse_job, job.id, str(path), job.params, doc_type)
