@@ -8,12 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import dev, documents, llm_models, parsers, prompts, runs, vectors
 from .config import settings
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, add_missing_columns, engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    add_missing_columns()
     if settings.seed:
         from .seed import seed
 

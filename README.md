@@ -42,6 +42,21 @@ cd frontend && npm install && npm run dev
 
 브라우저에서 http://localhost:5173 을 엽니다. 첫 실행 시 샘플 Parser, Mock 모델, 기본 프롬프트, 샘플 문서가 자동 등록되어 LLM 없이도 전체 흐름을 확인할 수 있습니다.
 
+### Upstage 파서
+
+`upstage-parser`가 비활성 상태로 미리 등록되어 있습니다. Upstage Agents API(v2)를 파일 업로드 → 작업 실행 → 완료까지 폴링 순서로 호출합니다.
+
+1. `backend/.env`에 API 키를 넣고 백엔드를 재시작합니다. 토큰만 넣으면 `Bearer `가 자동으로 붙습니다.
+
+   ```
+   UPSTAGE_API_KEY=up_xxxxxxxx
+   ```
+
+2. **Parser Registry**에서 `upstage-parser`를 수정해 **Project ID**(`proj_…`)와 **Agent ID**(`agt_…`)를 입력하고 활성화합니다. config_id, purpose, include도 여기서 바꿀 수 있습니다. 다른 Parser도 "Upstage 기본값 채우기"로 같은 설정을 만들 수 있습니다.
+3. **문서 → 테스트 문서 업로드**에서 `upstage-parser`를 골라 파일을 올립니다.
+
+연결 테스트 버튼은 비용이 드는 실제 호출 대신 설정만 확인합니다. 결과는 `upstage` 어댑터가 표준 스키마로 바꿉니다(`elements`가 있으면 그대로, 없으면 `content.html`을 나눠서). 좌표는 0~1 상대값으로 저장되며 원본 대조 뷰가 페이지 비율에 맞춰 그립니다.
+
 ### 벡터 검색 (임베딩 → Milvus → 질의)
 
 로컬 Milvus를 띄웁니다 (Docker 필요, 데이터는 `deploy/milvus/volumes/`에 저장).

@@ -45,9 +45,15 @@ interface Props {
 /** PV-01/PV-05: 원본 페이지 위에 Element bbox를 색상 오버레이, reading_order 표시 */
 export function PageCanvas({ page, elements, pdf, width, colorOf, selectedId, onSelect, showOrder }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const pw = page.width ?? Math.max(612, ...elements.map((e) => e.bbox?.x1 ?? 0))
-  const ph = page.height ?? Math.max(792, ...elements.map((e) => e.bbox?.y1 ?? 0))
-  const height = (width * ph) / pw
+  const [pdfAspect, setPdfAspect] = useState<number | null>(null)
+  // 상대좌표(0~1, 예: Upstage): 페이지 크기가 1 이하로 기록되었거나, 크기 정보 없이 모든 좌표가 0~1 범위
+  const maxCoord = Math.max(0, ...elements.map((e) => Math.max(e.bbox?.x1 ?? 0, e.bbox?.y1 ?? 0)))
+  const relative = (page.width != null && page.width <= 1.5) || (page.width == null && maxCoord > 0 && maxCoord <= 1.0001)
+  const pw = relative ? 1 : page.width ?? Math.max(612, ...elements.map((e) => e.bbox?.x1 ?? 0))
+  const ph = relative ? 1 : page.height ?? Math.max(792, ...elements.map((e) => e.bbox?.y1 ?? 0))
+  // 원본 PDF가 있으면 그 페이지 비율을, 상대좌표인데 PDF가 없으면 A4 세로 비율을 쓴다.
+  // SVG는 preserveAspectRatio="none"이라 좌표계가 컨테이너에 맞춰 늘어난다.
+  const height = width * (pdfAspect ?? (relative ? Math.SQRT2 : ph / pw))
 
   useEffect(() => {
     if (!pdf || !canvasRef.current) return
@@ -56,6 +62,7 @@ export function PageCanvas({ page, elements, pdf, width, colorOf, selectedId, on
     void pdf.getPage(page.page_no).then((p) => {
       if (cancelled || !canvasRef.current) return
       const base = p.getViewport({ scale: 1 })
+      setPdfAspect(base.height / base.width)
       const scale = (width / base.width) * window.devicePixelRatio
       const vp = p.getViewport({ scale })
       const canvas = canvasRef.current
@@ -86,7 +93,7 @@ export function PageCanvas({ page, elements, pdf, width, colorOf, selectedId, on
           const c = colorOf(e)
           const sel = e.element_id === selectedId
           return (
-            <rect key={e.element_id} x={b.x0} y={b.y0} width={Math.max(1, b.x1 - b.x0)} height={Math.max(1, b.y1 - b.y0)}
+            <rect key={e.element_id} x={b.x0} y={b.y0} width={Math.max(pw * 0.002, b.x1 - b.x0)} height={Math.max(ph * 0.002, b.y1 - b.y0)}
               fill={c} fillOpacity={sel ? 0.35 : 0.15} stroke={c} strokeWidth={sel ? 2.5 : 1} vectorEffect="non-scaling-stroke"
               style={{ cursor: 'pointer' }} onClick={() => onSelect?.(e.element_id)}>
               <title>{`${e.element_id} [${e.type}] ${e.text.slice(0, 80)}`}</title>
@@ -98,7 +105,7 @@ export function PageCanvas({ page, elements, pdf, width, colorOf, selectedId, on
             vectorEffect="non-scaling-stroke" strokeDasharray="4 3" />
         )}
         {showOrder && ordered.map((e, i) => (
-          <text key={e.element_id} x={e.bbox!.x0 + 2} y={e.bbox!.y0 + 10} fontSize={Math.max(8, pw / 70)} fill="#e11d48" fontWeight={700}>{i + 1}</text>
+          <text key={e.element_id} x={e.bbox!.x0 + pw * 0.004} y={e.bbox!.y0 + ph * 0.014} fontSize={pw / 70} fill="#e11d48" fontWeight={700}>{i + 1}</text>
         ))}
       </svg>
     </div>

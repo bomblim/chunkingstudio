@@ -43,4 +43,4 @@ def adapt(name: str, payload: Any, config: dict[str, Any] | None = None) -> Stan
         raise AdapterError(f"{name} 어댑터 변환 실패: {exc}") from exc
 
 
-from . import builtin  # noqa: E402,F401  (등록 부수효과)
+from . import builtin, upstage  # noqa: E402,F401  (등록 부수효과)

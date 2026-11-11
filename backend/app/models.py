@@ -39,7 +39,9 @@ class Parser(TimestampMixin, Base):
     api_auth_header: Mapped[str] = mapped_column(String(200), default="")  # 예: "Authorization"
     api_auth_env: Mapped[str] = mapped_column(String(200), default="")  # 값은 환경변수에서 읽음
     api_timeout_sec: Mapped[float] = mapped_column(Float, default=120.0)
-    api_mode: Mapped[str] = mapped_column(String(20), default="sync")  # sync | async
+    api_mode: Mapped[str] = mapped_column(String(20), default="sync")  # sync | async | upstage
+    # 호출 방식별 추가 설정 (upstage: project_id, model, config_id, purpose, include, extra_body, poll_interval_sec)
+    api_config: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=dict, nullable=True)
     api_status_url: Mapped[str] = mapped_column(String(1000), default="")  # async: {job_id} 치환
     api_file_field: Mapped[str] = mapped_column(String(100), default="file")
     max_file_mb: Mapped[float] = mapped_column(Float, default=50.0)

@@ -81,7 +81,8 @@ export interface Parser {
   api_auth_header: string
   api_auth_env: string
   api_timeout_sec: number
-  api_mode: 'sync' | 'async'
+  api_mode: 'sync' | 'async' | 'upstage'
+  api_config: UpstageConfig & Record<string, unknown>
   api_status_url: string
   api_file_field: string
   max_file_mb: number
@@ -334,4 +335,14 @@ export interface QueryResult {
   metric: string
   warnings: string[]
   hits: SearchHit[]
+}
+
+export interface UpstageConfig {
+  project_id?: string
+  model?: string
+  config_id?: string
+  purpose?: string
+  include?: string
+  poll_interval_sec?: number
+  extra_body?: Record<string, unknown>
 }

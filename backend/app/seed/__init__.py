@@ -69,6 +69,7 @@ def seed(db: Session) -> None:
                       file_hash=sha256(data), source_file_path=str(path), doc_type="사내 규정")
 
     seed_vectors(db)
+    seed_upstage(db)
 
 
 QWEN3_QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
@@ -101,3 +102,29 @@ def seed_vectors(db: Session) -> None:
             VectorStore(name="메모리 (개발용)", kind="memory"),
         ])
         db.commit()
+
+
+UPSTAGE_PARSER_NAME = "upstage-parser"
+
+
+def seed_upstage(db: Session) -> None:
+    """Upstage 파서 등록 예시 (비활성). Project ID·Agent ID는 Parser 등록 화면에서 채우고, 키는 UPSTAGE_API_KEY 환경변수로."""
+    if db.scalar(select(Parser).where(Parser.name == UPSTAGE_PARSER_NAME)):
+        return
+    db.add(Parser(
+        name=UPSTAGE_PARSER_NAME,
+        description="Upstage Agents API(v2): 파일 업로드 → 작업 실행 → 완료까지 폴링. Project ID와 Agent ID를 입력한 뒤 활성화하세요.",
+        version="v2",
+        owner="Upstage",
+        input_formats=["pdf", "docx", "pptx", "xlsx", "hwp", "png", "jpg"],
+        adapter="upstage",
+        api_url="https://api.upstage.ai/v2",
+        api_mode="upstage",
+        api_auth_header="Authorization",
+        api_auth_env="UPSTAGE_API_KEY",
+        api_timeout_sec=600,
+        api_config={"project_id": "", "model": "", "config_id": "1", "purpose": "user_data", "include": "",
+                    "poll_interval_sec": 2, "extra_body": {}},
+        enabled=False,
+    ))
+    db.commit()
