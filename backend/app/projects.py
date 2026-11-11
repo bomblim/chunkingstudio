@@ -1,6 +1,7 @@
 """프로젝트 트리와 청킹 프로파일 상속."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -85,3 +86,59 @@ def resolve_prompt_version(db: Session, prompt_id: int | None, prompt_version_id
         return None
     prod = [v for v in prompt.versions if v.status == "production"]
     return prod[-1] if prod else prompt.versions[-1]
+
+
+# ------------------------------------------------------------------ 메타데이터·권한
+_PRINCIPAL_RE = re.compile(r"^[^\s\"'\\[\],]{1,200}$")
+META_KEY_RE = re.compile(r"^[^\s\"'\\[\]]{1,100}$")
+
+
+def validate_principal(p: str) -> str:
+    """주체 문자열 검증. 벡터 DB 필터식에 들어가므로 따옴표·대괄호·공백·쉼표·역슬래시를 허용하지 않는다."""
+    p = p.strip()
+    if not _PRINCIPAL_RE.match(p):
+        raise ValueError(f"권한 주체 형식이 올바르지 않습니다: {p!r} (공백·따옴표·쉼표·대괄호·역슬래시 불가)")
+    return p
+
+
+def validate_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in meta.items():
+        k = str(k).strip()
+        if not META_KEY_RE.match(k):
+            raise ValueError(f"메타데이터 키 형식이 올바르지 않습니다: {k!r} (공백·따옴표·대괄호·역슬래시 불가)")
+        if not isinstance(v, (str, int, float, bool)) and v is not None and not (
+            isinstance(v, list) and all(isinstance(x, (str, int, float, bool)) for x in v)
+        ):
+            raise ValueError(f"메타데이터 '{k}' 값은 문자열·숫자·불리언 또는 그 목록이어야 합니다")
+        out[k] = v
+    return out
+
+
+def effective_access(tree: dict[int, Project], project_id: int | None) -> dict[str, Any]:
+    """루트 → 자신 순서로 메타데이터를 병합하고 권한을 계산한다.
+
+    반환: meta, meta_sources(키 → 프로젝트 id), permissions(정렬), permission_sources(주체 → 프로젝트 id),
+         public(권한 목록이 비어 제한 없음)
+    """
+    chain = list(reversed(ancestors(tree, project_id)))
+    meta: dict[str, Any] = {}
+    meta_sources: dict[str, int] = {}
+    perms: dict[str, int] = {}
+    for p in chain:
+        for k, v in (p.meta or {}).items():
+            meta[k] = v
+            meta_sources[k] = p.id
+        own = p.permissions or []
+        if p.permission_mode == "override":
+            perms = {x: p.id for x in own}
+        else:
+            for x in own:
+                perms.setdefault(x, p.id)
+    return {
+        "meta": meta,
+        "meta_sources": meta_sources,
+        "permissions": sorted(perms),
+        "permission_sources": perms,
+        "public": not perms,
+    }

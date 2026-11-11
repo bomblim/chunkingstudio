@@ -127,6 +127,17 @@ export default function DocumentsPage() {
                   </>
                 )}
               </div>
+              <div className="row small" style={{ marginTop: 6, gap: 6 }}>
+                <span>메타데이터:</span>
+                {Object.keys(current.access.meta).length ? Object.entries(current.access.meta).map(([k, v]) => (
+                  <span key={k} className="badge" title={current.access.meta_sources[k] !== current.id ? `${current.access.meta_source_names[k]}에서 상속` : undefined}>{k}={Array.isArray(v) ? v.join(", ") : String(v)}</span>
+                )) : <span className="muted">없음</span>}
+                <span style={{ marginLeft: 8 }}>권한:</span>
+                {current.access.public ? <Badge kind="ok">전체 공개</Badge> : current.access.permissions.map((p) => (
+                  <span key={p} className="badge accent" title={current.access.permission_sources[p] !== current.id ? `${current.access.permission_source_names[p]}에서 상속` : undefined}>{p}</span>
+                ))}
+                {current.permission_mode === "override" && <span className="muted">(상위 권한 재정의)</span>}
+              </div>
             </div>
           )}
 

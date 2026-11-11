@@ -14,6 +14,7 @@ from ..db import get_db
 from ..embeddings import TEMPLATE_FIELDS, EmbeddingError, embed
 from ..indexing import execute_index_job, query_index
 from ..models import ChunkRun, EmbeddingModel, VectorIndex, VectorStore
+from ..projects import validate_principal
 from ..vectorstores import VectorStoreError, open_store, validate_collection_name
 from . import get_or_404, row_dict
 
@@ -167,6 +168,8 @@ class QueryIn(BaseModel):
     query: str
     top_k: int = 5
     filter: str = ""
+    # None: 권한 필터 미적용(관리자 보기) / []: 공개 청크만 / ["group:인사팀", ...]: 해당 주체가 볼 수 있는 청크만
+    principals: list[str] | None = None
 
 
 def _index_out(db: Session, ix: VectorIndex) -> dict[str, Any]:
@@ -266,7 +269,13 @@ def query(index_id: int, body: QueryIn, db: Session = Depends(get_db)) -> dict[s
     if not body.query.strip():
         raise HTTPException(400, "질의를 입력하세요")
     try:
+        principals = None
+        if body.principals is not None:
+            try:
+                principals = sorted({validate_principal(x) for x in body.principals if x.strip()})
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
         return query_index(ix, db.get(EmbeddingModel, ix.embedding_model_id), db.get(VectorStore, ix.store_id),
-                           body.query, max(1, min(body.top_k, 100)), body.filter)
+                           body.query, max(1, min(body.top_k, 100)), body.filter, principals)
     except (EmbeddingError, VectorStoreError) as exc:
         raise HTTPException(502, str(exc)) from exc

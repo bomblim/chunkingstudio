@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, papi, type ProjectInput } from '../api'
 import type { ChunkSettings, Project } from '../types'
+import { MetaEditor, PermissionEditor, metaToRows, rowsToMeta } from './AccessEditor'
 import { descendantIds, projectOptions } from './ProjectTree'
 import { ErrorBanner, Modal, useAsync } from './ui'
 
@@ -18,9 +19,11 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
   const prompts = useAsync(() => api.prompts(), [])
   const models = useAsync(() => api.models(), [])
   const [d, setD] = useState<ProjectInput>(() => project
-    ? { name: project.name, description: project.description, parent_id: project.parent_id, sort_order: project.sort_order, method: project.method, prompt_id: project.prompt_id, prompt_version_id: project.prompt_version_id, model_id: project.model_id, params: project.params, settings: project.settings, doc_type: project.doc_type }
-    : { name: '', description: '', parent_id: parentId ?? null, sort_order: 0, method: null, prompt_id: null, prompt_version_id: null, model_id: null, params: null, settings: null, doc_type: null })
+    ? { name: project.name, description: project.description, parent_id: project.parent_id, sort_order: project.sort_order, method: project.method, prompt_id: project.prompt_id, prompt_version_id: project.prompt_version_id, model_id: project.model_id, params: project.params, settings: project.settings, doc_type: project.doc_type, meta: project.meta, permissions: project.permissions, permission_mode: project.permission_mode }
+    : { name: '', description: '', parent_id: parentId ?? null, sort_order: 0, method: null, prompt_id: null, prompt_version_id: null, model_id: null, params: null, settings: null, doc_type: null, meta: null, permissions: null, permission_mode: null })
   const [error, setError] = useState('')
+  const [metaRows, setMetaRows] = useState(() => metaToRows(project?.meta ?? null))
+  const [tab, setTab] = useState<'profile' | 'access'>('profile')
   const set = <K extends keyof ProjectInput>(k: K, v: ProjectInput[K]) => setD((x) => ({ ...x, [k]: v }))
   const exclude = project ? descendantIds(projects, project.id) : undefined
   const parent = projects.find((p) => p.id === d.parent_id)
@@ -31,8 +34,11 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
 
   const save = async () => {
     setError('')
+    const { meta, error: metaError } = rowsToMeta(metaRows)
+    if (metaError) { setError(metaError); setTab('access'); return }
+    const body = { ...d, meta, permissions: d.permissions?.length ? d.permissions : null }
     try {
-      onSaved(project ? await papi.updateProject(project.id, d) : await papi.createProject(d))
+      onSaved(project ? await papi.updateProject(project.id, body) : await papi.createProject(body))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -57,7 +63,23 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
       </div>
       <label className="field" style={{ marginTop: 8 }}>설명<input value={d.description} onChange={(e) => set('description', e.target.value)} /></label>
 
-      <h3 style={{ marginTop: 16 }}>청킹 프로파일</h3>
+      <div className="tabs" role="tablist" style={{ marginTop: 14 }}>
+        <button role="tab" aria-selected={tab === 'profile'} className={`tab ${tab === 'profile' ? 'active' : ''}`} onClick={() => setTab('profile')}>청킹 프로파일</button>
+        <button role="tab" aria-selected={tab === 'access'} className={`tab ${tab === 'access' ? 'active' : ''}`} onClick={() => setTab('access')}>메타데이터 · 권한</button>
+      </div>
+      {tab === 'access' && (
+        <div className="col">
+          <h3 style={{ margin: 0 }}>메타데이터</h3>
+          <p className="small muted" style={{ margin: 0 }}>벡터 DB에 적재할 때 청크마다 함께 저장됩니다(<code>metadata.project_meta</code>). 상위 값을 물려받고, 같은 키는 이 프로젝트 값이 우선합니다.</p>
+          <MetaEditor rows={metaRows} onChange={setMetaRows} inherited={parent ? { meta: parent.access.meta, names: parent.access.meta_source_names } : undefined} />
+          <h3 style={{ margin: '12px 0 0' }}>권한 목록</h3>
+          <p className="small muted" style={{ margin: 0 }}>이 프로젝트 문서를 볼 수 있는 주체입니다(<code>group:</code>, <code>user:</code>, <code>role:</code> 등 자유 형식). 비어 있으면 제한 없음(전체 공개)입니다. 적재 시 청크에 복사되므로 바꾼 뒤에는 다시 적재해야 검색에 반영됩니다.</p>
+          <PermissionEditor value={d.permissions ?? []} onChange={(v) => set('permissions', v)} mode={d.permission_mode ?? 'inherit'}
+            onModeChange={(m) => set('permission_mode', m === 'inherit' ? null : m)} effective={parent?.access} />
+        </div>
+      )}
+      <div style={tab === 'profile' ? undefined : { display: 'none' }}>
+      <h3 style={{ marginTop: 4 }}>청킹 프로파일</h3>
       <p className="small muted" style={{ marginTop: 0 }}>이 프로젝트와 하위 프로젝트 문서에 쓸 청킹 방식입니다. "상속"으로 두면 상위 프로젝트 설정을 따릅니다. Playground에서 이 프로젝트 문서를 열면 기본값으로 적용되고, 일괄 청킹도 이 설정으로 실행됩니다.</p>
       <div className="grid-2">
         <label className="field">청킹 방식
@@ -109,6 +131,7 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
             </div>
           </div>
         )}
+      </div>
       </div>
     </Modal>
   )

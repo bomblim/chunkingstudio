@@ -124,10 +124,10 @@ export const vapi = {
     post<VectorIndex>('/api/indexes', body),
   appendRun: (id: number, runId: number) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
   deleteIndex: (id: number, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
-  query: (id: number, body: { query: string; top_k: number; filter: string }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
+  query: (id: number, body: { query: string; top_k: number; filter: string; principals?: string[] | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }
 
-export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type'>
+export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'meta' | 'permissions' | 'permission_mode'>
 
 export const papi = {
   projects: () => get<ProjectTree>('/api/projects'),

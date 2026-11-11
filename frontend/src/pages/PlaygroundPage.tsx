@@ -106,6 +106,7 @@ export default function PlaygroundPage() {
         settings: { max_tokens: settings.max_tokens, min_tokens: settings.min_tokens, window_tokens: settings.window_tokens,
                     exclude_types: settings.exclude_types, retries: settings.retries, auto_fix: settings.auto_fix },
         doc_type: settings.doc_type || p.doc_type,
+        meta: p.meta, permissions: p.permissions, permission_mode: p.permission_mode,
       })
       await project.reload()
       setProjectNotice('프로젝트 프로파일에 저장했습니다')

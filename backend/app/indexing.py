@@ -8,13 +8,22 @@ from typing import Any
 from .db import SessionLocal
 from .embeddings import EmbeddingError, embed, render_embed_text
 from .models import ChunkRun, Document, EmbeddingModel, VectorIndex, VectorStore
-from .vectorstores import VectorStoreError, clip_utf8, open_store, timed
+from .projects import effective_access, load_tree, path_names
+from .vectorstores import VectorStoreError, clip_utf8, combine_filters, open_store, permission_expr, timed
 
 
-def build_rows(run: ChunkRun, document: Document, index: VectorIndex) -> tuple[list[dict[str, Any]], list[str], list[str]]:
-    """반환: (적재 행(벡터 제외), 임베딩 입력 텍스트, 경고)."""
+def build_rows(
+    run: ChunkRun, document: Document, index: VectorIndex, access: dict[str, Any] | None = None,
+    project_path: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """반환: (적재 행(벡터 제외), 임베딩 입력 텍스트, 경고).
+
+    access: 문서가 속한 프로젝트의 effective_access 결과. 적재 시점 값이 청크에 복사되므로
+    프로젝트 권한·메타데이터를 바꾸면 다시 적재해야 반영된다.
+    """
     rows, inputs, warnings = [], [], []
     snap = run.snapshot or {}
+    access = access or {"meta": {}, "permissions": [], "public": True}
     truncated = 0
     for c in run.chunks:
         embed_text = render_embed_text(index.embed_template, c, document.title)
@@ -47,6 +56,12 @@ def build_rows(run: ChunkRun, document: Document, index: VectorIndex) -> tuple[l
                 "parser": document.parser_name,
                 "parser_version": document.parser_version,
                 "text_truncated": cut1,
+                # 프로젝트 메타데이터·권한 (질의 시 권한 필터에 사용)
+                "project_id": document.project_id,
+                "project_path": project_path or [],
+                "project_meta": access["meta"],
+                "permissions": access["permissions"],
+                "public": access["public"],
             },
         })
         inputs.append(embed_text)
@@ -71,7 +86,9 @@ def execute_index_job(index_id: int, run_id: int, mode: str) -> None:
         index.progress = {"phase": "embedding", "done": 0, "total": len(run.chunks)}
         db.commit()
 
-        rows, inputs, warnings = build_rows(run, document, index)
+        tree = load_tree(db)
+        access = effective_access(tree, document.project_id)
+        rows, inputs, warnings = build_rows(run, document, index, access, path_names(tree, document.project_id))
         if not rows:
             raise ValueError("적재할 청크가 없습니다")
 
@@ -133,15 +150,18 @@ def execute_index_job(index_id: int, run_id: int, mode: str) -> None:
 
 
 def query_index(index: VectorIndex, model: EmbeddingModel, store_cfg: VectorStore, query: str, top_k: int,
-                filter: str = "") -> dict[str, Any]:
+                filter: str = "", principals: list[str] | None = None) -> dict[str, Any]:
+    """principals: None이면 권한 필터 없음(관리자 보기), 목록이면 그 주체가 볼 수 있는 청크만."""
     q = embed(model, [query], "query")
     store = open_store(store_cfg)
-    hits, search_ms = timed(store.search, index.collection, q.vectors[0], top_k, filter)
+    hits, search_ms = timed(store.search, index.collection, q.vectors[0], top_k, filter, principals)
     return {
         "query": query,
         "embed_ms": q.latency_ms,
         "search_ms": search_ms,
         "metric": index.metric,
         "warnings": q.warnings,
+        "principals": principals,
+        "applied_filter": combine_filters(filter, permission_expr(principals)) if store_cfg.kind == "milvus" else None,
         "hits": [{"id": h.id, "score": h.score, **h.fields} for h in hits],
     }

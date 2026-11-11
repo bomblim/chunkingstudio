@@ -196,6 +196,9 @@ function QueryPanel({ index }: { index: VectorIndex }) {
   const [query, setQuery] = useState('')
   const [topK, setTopK] = useState(5)
   const [filter, setFilter] = useState('')
+  const [useAcl, setUseAcl] = useState(false)
+  const [principals, setPrincipals] = useState('')
+  const principalList = principals.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -206,7 +209,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
     setLoading(true)
     setError('')
     try {
-      setResult(await vapi.query(index.id, { query: q, top_k: topK, filter }))
+      setResult(await vapi.query(index.id, { query: q, top_k: topK, filter, principals: useAcl ? principalList : null }))
       setHistory((h) => [q, ...h.filter((x) => x !== q)].slice(0, 8))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -225,6 +228,12 @@ function QueryPanel({ index }: { index: VectorIndex }) {
         <label className="row small">Top-K<input type="number" min={1} max={100} value={topK} onChange={(e) => setTopK(Number(e.target.value))} style={{ width: 64 }} /></label>
         <button className="primary" type="submit" disabled={loading || !query.trim()}>{loading ? '검색 중…' : '검색'}</button>
       </form>
+      <div className="row small" style={{ marginTop: 6, flexWrap: 'nowrap' }}>
+        <label className="check" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={useAcl} onChange={(e) => setUseAcl(e.target.checked)} />권한 필터</label>
+        <input className="grow mono" disabled={!useAcl} value={principals} onChange={(e) => setPrincipals(e.target.value)}
+          placeholder="사용자의 권한 주체 — 예: user:hong, group:인사팀 (비우면 공개 청크만)" aria-label="사용자 권한 주체" />
+      </div>
+      {useAcl && <div className="small muted">공개(권한 목록 없음) 청크와, 권한 목록에 위 주체가 하나라도 있는 청크만 검색합니다. 이 기능 이전에 적재한 청크는 권한 정보가 없어 제외되니 다시 적재하세요.</div>}
       {index.store_kind === 'milvus' && (
         <input style={{ marginTop: 6, width: '100%' }} className="mono" value={filter} onChange={(e) => setFilter(e.target.value)}
           placeholder='Milvus 필터 (선택) — 예: run_id == 3  /  document_id in [1, 2]  /  metadata["doc_type"] == "사내 규정"' aria-label="필터" />
@@ -233,6 +242,8 @@ function QueryPanel({ index }: { index: VectorIndex }) {
       <ErrorBanner error={error} />
       {result && (
         <div className="col" style={{ marginTop: 10 }}>
+          {result.applied_filter && <div className="small muted mono">적용 필터: {result.applied_filter}</div>}
+          {result.principals && !result.applied_filter && <div className="small muted">권한 필터: {result.principals.length ? result.principals.join(', ') : '공개 청크만'}</div>}
           <div className="small muted">결과 {result.hits.length}건 · 질의 임베딩 {result.embed_ms}ms · 검색 {result.search_ms}ms · {result.metric}{result.metric === 'L2' ? ' (작을수록 유사)' : ' (클수록 유사)'}</div>
           {result.warnings.map((w, i) => <div key={i} className="banner warn small" style={{ margin: 0 }}>{w}</div>)}
           {result.hits.map((h, i) => (
@@ -246,6 +257,9 @@ function QueryPanel({ index }: { index: VectorIndex }) {
                 {h.metadata.tokens ? <Badge>{h.metadata.tokens}t</Badge> : null}
               </div>
               <div className="small muted" style={{ margin: '2px 0 6px' }}>
+                {h.metadata.project_path?.length ? <span className="badge" style={{ marginRight: 4 }}>{h.metadata.project_path.join(' / ')}</span> : null}
+                {h.metadata.public === false ? h.metadata.permissions?.map((p) => <span key={p} className="badge accent" style={{ marginRight: 4 }}>🔒 {p}</span>) : h.metadata.public ? <span className="badge ok" style={{ marginRight: 4 }}>공개</span> : null}
+                {Object.entries(h.metadata.project_meta ?? {}).map(([k, v]) => <span key={k} className="badge" style={{ marginRight: 4 }}>{k}={Array.isArray(v) ? v.join(', ') : String(v)}</span>)}
                 {h.metadata.document_title} · {h.section_path} · p.{h.metadata.pages?.join(',') || '-'} · {h.metadata.element_ids?.[0]}~{h.metadata.element_ids?.at(-1)}
                 {' · '}<Link to={`/playground?doc=${h.document_id}&run=${h.run_id}`}>실행 #{h.run_id}에서 보기</Link>
               </div>

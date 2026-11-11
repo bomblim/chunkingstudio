@@ -328,6 +328,7 @@ export interface SearchHit {
   metadata: {
     document_title?: string; element_ids?: string[]; pages?: number[]; tokens?: number; summary?: string
     keywords?: string[]; prompt_version?: number | null; llm_model?: string | null; method?: string; text_truncated?: boolean
+    project_id?: number | null; project_path?: string[]; project_meta?: Record<string, unknown>; permissions?: string[]; public?: boolean
   }
 }
 
@@ -337,6 +338,8 @@ export interface QueryResult {
   search_ms: number
   metric: string
   warnings: string[]
+  principals: string[] | null
+  applied_filter: string | null
   hits: SearchHit[]
 }
 
@@ -360,10 +363,26 @@ export interface ProjectProfile {
   doc_type: string | null
 }
 
+export type ProjectMeta = Record<string, string | number | boolean | null | (string | number | boolean)[]>
+
+export interface ProjectAccess {
+  meta: ProjectMeta
+  meta_sources: Record<string, number>
+  meta_source_names: Record<string, string>
+  permissions: string[]
+  permission_sources: Record<string, number>
+  permission_source_names: Record<string, string>
+  public: boolean
+}
+
 export interface Project extends ProjectProfile {
   id: number
   name: string
   description: string
+  meta: ProjectMeta | null
+  permissions: string[] | null
+  permission_mode: 'inherit' | 'override' | null
+  access: ProjectAccess
   parent_id: number | null
   sort_order: number
   path: string[]

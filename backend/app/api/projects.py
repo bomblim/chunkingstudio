@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import ChunkRun, Document, LLMModel, Project, Prompt
 from ..projects import (
-    descendant_ids, effective_profile, load_tree, path_names, resolve_prompt_version, would_cycle,
+    descendant_ids, effective_access, effective_profile, load_tree, path_names, resolve_prompt_version,
+    validate_meta, validate_principal, would_cycle,
 )
 from ..services import execute_run
 from . import get_or_404, row_dict
@@ -33,6 +34,10 @@ class ProjectIn(BaseModel):
     params: dict[str, Any] | None = None
     settings: dict[str, Any] | None = None
     doc_type: str | None = None
+    # 메타데이터·권한
+    meta: dict[str, Any] | None = None
+    permissions: list[str] | None = None
+    permission_mode: str | None = None  # inherit | override
 
 
 class RunAllIn(BaseModel):
@@ -61,6 +66,15 @@ def _validate(db: Session, body: ProjectIn, project_id: int | None = None) -> No
         raise HTTPException(400, "프롬프트 버전을 고정하려면 프롬프트도 지정해야 합니다")
     if body.model_id is not None:
         get_or_404(db, LLMModel, body.model_id)
+    if body.permission_mode not in (None, "inherit", "override"):
+        raise HTTPException(400, "permission_mode는 inherit / override 중 하나")
+    try:
+        if body.meta is not None:
+            body.meta = validate_meta(body.meta) or None
+        if body.permissions is not None:
+            body.permissions = sorted({validate_principal(x) for x in body.permissions if x.strip()})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 def _describe(db: Session, tree: dict[int, Project], p: Project, counts: dict[int | None, int]) -> dict[str, Any]:
@@ -76,6 +90,10 @@ def _describe(db: Session, tree: dict[int, Project], p: Project, counts: dict[in
     eff["model_name"] = model.name if model else None
     eff["source_names"] = {f: tree[pid].name for f, pid in eff["sources"].items() if pid in tree}
     d["effective"] = eff
+    acc = effective_access(tree, p.id)
+    acc["meta_source_names"] = {k: tree[pid].name for k, pid in acc["meta_sources"].items() if pid in tree}
+    acc["permission_source_names"] = {k: tree[pid].name for k, pid in acc["permission_sources"].items() if pid in tree}
+    d["access"] = acc
     return d
 
 

@@ -45,7 +45,8 @@ class Store(Protocol):
     def describe(self, name: str) -> dict[str, Any]: ...
     def insert(self, name: str, rows: list[dict[str, Any]]) -> int: ...
     def delete_by_run(self, name: str, run_id: int) -> None: ...
-    def search(self, name: str, vector: list[float], top_k: int, filter: str = "") -> list[SearchHit]: ...
+    def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
+               principals: list[str] | None = None) -> list[SearchHit]: ...
     def count(self, name: str) -> int: ...
 
 
@@ -59,6 +60,32 @@ def clip_utf8(text: str, max_bytes: int = VARCHAR_MAX - 16) -> tuple[str, bool]:
     if len(raw) <= max_bytes:
         return text, False
     return raw[:max_bytes].decode("utf-8", errors="ignore"), True
+
+
+def permission_expr(principals: list[str] | None) -> str:
+    """Milvus 권한 필터식. principals=None이면 필터 없음, []이면 공개 청크만.
+
+    청크 metadata의 public(권한 목록이 비어 제한 없음) 또는 permissions에 주체가 하나라도 있으면 열람 가능.
+    주체 문자열은 projects.validate_principal로 검증된 값만 들어온다(따옴표·대괄호 불가).
+    """
+    if principals is None:
+        return ""
+    public = 'metadata["public"] == true'
+    if not principals:
+        return public
+    return f'({public} or json_contains_any(metadata["permissions"], {json.dumps(principals, ensure_ascii=False)}))'
+
+
+def combine_filters(*exprs: str) -> str:
+    parts = [e.strip() for e in exprs if e and e.strip()]
+    return " and ".join(f"({p})" for p in parts)
+
+
+def can_access(metadata: dict[str, Any] | None, principals: list[str] | None) -> bool:
+    if principals is None:
+        return True
+    m = metadata or {}
+    return bool(m.get("public")) or bool(set(m.get("permissions") or []) & set(principals))
 
 
 def open_store(store: VectorStore) -> Store:
@@ -160,9 +187,11 @@ class MilvusStore:
     def delete_by_run(self, name: str, run_id: int) -> None:
         self._call(self.client.delete, collection_name=name, filter=f"run_id == {int(run_id)}")
 
-    def search(self, name: str, vector: list[float], top_k: int, filter: str = "") -> list[SearchHit]:
+    def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
+               principals: list[str] | None = None) -> list[SearchHit]:
         self._call(self.client.load_collection, name)
-        res = self._call(self.client.search, collection_name=name, data=[vector], limit=top_k, filter=filter or "",
+        expr = combine_filters(filter, permission_expr(principals))
+        res = self._call(self.client.search, collection_name=name, data=[vector], limit=top_k, filter=expr,
                          output_fields=list(SCALAR_FIELDS))
         hits = []
         for h in res[0] if res else []:
@@ -229,13 +258,16 @@ class MemoryStore:
         d["rows"] = {k: v for k, v in d["rows"].items() if v.get("run_id") != run_id}
         self._save(name, d)
 
-    def search(self, name: str, vector: list[float], top_k: int, filter: str = "") -> list[SearchHit]:
+    def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
+               principals: list[str] | None = None) -> list[SearchHit]:
         if filter.strip():
-            raise VectorStoreError("메모리 저장소는 필터를 지원하지 않습니다 (Milvus에서 사용하세요)")
+            raise VectorStoreError("메모리 저장소는 필터식을 지원하지 않습니다 (Milvus에서 사용하세요). 권한 필터는 지원합니다")
         d = self._load(name)
         metric = d["metric"]
         scored = []
         for r in d["rows"].values():
+            if not can_access(r.get("metadata"), principals):
+                continue
             v = r["vector"]
             if metric == "L2":
                 s = math.sqrt(sum((a - b) ** 2 for a, b in zip(v, vector, strict=True)))

@@ -15,6 +15,7 @@ def _wait(client, url, done=("done", "failed"), key="status"):
 def test_seed_and_mock_run(client):
     docs = client.get("/api/documents").json()
     assert docs, "샘플 문서가 시드되어야 함"
+    docs = [d for d in docs if d["title"].endswith("(샘플)")]  # 다른 테스트가 만든 문서와 섞이지 않도록
     models = client.get("/api/models", params={"usable_only": True}).json()
     mock = next(m for m in models if m["provider"] == "mock")
     prompt = client.get("/api/prompts").json()[0]

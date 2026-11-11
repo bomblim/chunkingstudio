@@ -94,6 +94,13 @@ class Project(TimestampMixin, Base):
     params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     settings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # ---- 메타데이터·권한 (벡터 DB 적재 시 청크에 함께 저장)
+    # 자유 키-값. 상위 값을 물려받고 같은 키는 하위 값이 우선
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # 열람 가능한 주체(principal) 목록. 예: "group:인사팀", "user:hong", "role:admin"
+    permissions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # inherit(기본): 상위 권한 + 이 목록 / override: 이 목록으로 재정의
+    permission_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 # ---------------------------------------------------------------- Documents
