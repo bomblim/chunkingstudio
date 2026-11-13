@@ -325,6 +325,32 @@ def delete_collection(collection_id: str, db: Session = Depends(get_db)) -> None
     db.commit()
 
 
+@router.post("/vector-collections/{collection_id}/empty")
+def empty_collection(collection_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """컬렉션 비우기: 벡터 저장소의 실제 컬렉션을 지우고 Studio 적재 기록도 지운다.
+
+    컬렉션 등록·프로젝트 지정은 그대로 두며, 다음 적재 때 컬렉션이 새로 만들어진다
+    (정수 ID 시절에 만든 이전 형식 컬렉션을 정리할 때도 쓴다).
+    """
+    c = get_or_404(db, VectorCollection, collection_id)
+    indexes = list(db.scalars(select(VectorIndex).where(VectorIndex.store_id == c.store_id,
+                                                        VectorIndex.collection == c.name)))
+    if any(ix.status in ("queued", "running") for ix in indexes):
+        raise HTTPException(409, "이 컬렉션에 적재가 진행 중입니다. 끝난 뒤 다시 시도하세요")
+    try:
+        store = open_store(c.store)
+        existed = store.has_collection(c.name)
+        if existed:
+            store.drop_collection(c.name)
+    except VectorStoreError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    removed_chunks = sum(ix.chunk_count or 0 for ix in indexes)
+    for ix in indexes:
+        db.delete(ix)
+    db.commit()
+    return {"collection": c.name, "dropped": existed, "removed_indexes": len(indexes), "removed_chunks": removed_chunks}
+
+
 @router.post("/vector-stores/{store_id}/health")
 def vector_store_health(store_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     s = get_or_404(db, VectorStore, store_id)

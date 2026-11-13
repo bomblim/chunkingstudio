@@ -11,10 +11,30 @@ export default function VectorStoresPage() {
   const [collEdit, setCollEdit] = useState<{ store: VectorStore; coll?: VectorCollection } | null>(null)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   const act = async (fn: () => Promise<unknown>) => {
     setError('')
+    setNotice('')
     try { await fn(); void stores.reload() } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+  }
+  const empty = (s: VectorStore, c: VectorCollection) => {
+    const users = c.projects.length ? `
+사용 중인 프로젝트: ${c.projects.join(', ')}` : ''
+    if (!confirm(`'${s.name}'의 '${c.name}' 컬렉션을 비울까요?
+적재된 청크${c.chunk_count ? ` ${c.chunk_count}개` : ''}가 모두 지워지고 되돌릴 수 없습니다.${users}
+컬렉션 등록과 프로젝트 지정은 그대로 남고, 다음 적재 때 새로 만들어집니다.`)) return
+    void act(async () => {
+      setBusy(c.id)
+      try {
+        const r = await vapi.emptyCollection(c.id)
+        setNotice(r.dropped || r.removed_indexes
+          ? `'${r.collection}' 컬렉션을 비웠습니다 (청크 ${r.removed_chunks}개, 적재 기록 ${r.removed_indexes}건 삭제).`
+          : `'${r.collection}' 컬렉션은 이미 비어 있습니다.`)
+      } finally {
+        setBusy(undefined)
+      }
+    })
   }
   const makeDefault = (c: VectorCollection) => act(() => vapi.updateCollection(c.id, { name: c.name, description: c.description, is_default: true }))
   const remove = (c: VectorCollection) => {
@@ -36,6 +56,7 @@ export default function VectorStoresPage() {
       </div>
       <div className="banner info small">로컬 Milvus 실행: <code>docker compose -f deploy/milvus/docker-compose.yml up -d</code></div>
       <ErrorBanner error={error || stores.error} />
+      {notice && <div className="banner info">{notice}</div>}
 
       {stores.data?.map((s) => {
         const known = s.last_health.collections
@@ -82,6 +103,7 @@ export default function VectorStoresPage() {
                     <td>{c.chunk_count ?? <span className="muted">-</span>}</td>
                     <td className="row">
                       <button className="sm" onClick={() => setCollEdit({ store: s, coll: c })}>수정</button>
+                      <button className="sm" disabled={!s.enabled || busy === c.id} title="적재된 청크를 모두 지웁니다 (등록·프로젝트 지정은 유지)" onClick={() => empty(s, c)}>{busy === c.id ? '비우는 중…' : '비우기'}</button>
                       {!c.is_default && <button className="sm" disabled={!s.enabled} onClick={() => void makeDefault(c)}>기본으로</button>}
                       {!c.is_default && <button className="sm danger" disabled={c.projects.length > 0} title={c.projects.length ? '사용 중인 프로젝트가 있어 삭제할 수 없습니다' : undefined} onClick={() => remove(c)}>삭제</button>}
                     </td>

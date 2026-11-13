@@ -167,3 +167,33 @@ def test_project_index_all_without_runs(client):
     p = client.post("/api/projects", json={"name": "빈 적재"}).json()
     r = client.post(f"/api/projects/{p['id']}/index-all", json={"embedding_model_id": emb_id})
     assert r.status_code == 400
+
+
+def test_empty_collection(client):
+    parser_id, emb_id = _ctx(client)
+    conn = _conn(client, "비우기 테스트")
+    coll = _coll(client, conn["id"], "cs_t_empty")
+    proj = client.post("/api/projects", json={"name": "비우기", "method": "rule_structure",
+                                              "vector_collection_id": coll["id"]}).json()
+    d = _doc(client, parser_id, "비울 문서", proj["id"])
+    run = _run(client, d["id"])
+    ix = client.post("/api/indexes", json={"run_id": run["id"], "embedding_model_id": emb_id}).json()
+    ix = _wait(client, f"/api/indexes/{ix['id']}")
+    assert ix["status"] == "done" and ix["chunk_count"] > 0
+
+    r = client.post(f"/api/vector-collections/{coll['id']}/empty")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"collection": "cs_t_empty", "dropped": True, "removed_indexes": 1,
+                        "removed_chunks": ix["chunk_count"]}
+    assert client.get(f"/api/indexes/{ix['id']}").status_code == 404
+    listed = next(s for s in client.get("/api/vector-stores").json() if s["id"] == conn["id"])
+    c = next(x for x in listed["collections"] if x["id"] == coll["id"])
+    assert c["chunk_count"] is None and c["projects"] == ["비우기"]  # 등록·프로젝트 지정은 유지
+
+    # 비운 뒤 다시 적재하면 컬렉션이 새로 만들어진다
+    ix2 = client.post("/api/indexes", json={"run_id": run["id"], "embedding_model_id": emb_id}).json()
+    ix2 = _wait(client, f"/api/indexes/{ix2['id']}")
+    assert ix2["status"] == "done" and ix2["chunk_count"] == ix["chunk_count"]
+    # 빈 컬렉션을 다시 비워도 오류 없이 처리
+    assert client.post(f"/api/vector-collections/{coll['id']}/empty").json()["removed_indexes"] == 1
+    assert client.post(f"/api/vector-collections/{coll['id']}/empty").json()["dropped"] is False

@@ -134,6 +134,8 @@ export const vapi = {
   createCollection: (storeId: string, c: CollectionInput) => post<VectorCollection>(`/api/vector-stores/${storeId}/collections`, c),
   updateCollection: (id: string, c: CollectionInput) => put<VectorCollection>(`/api/vector-collections/${id}`, c),
   deleteCollection: (id: string) => del(`/api/vector-collections/${id}`),
+  /** 컬렉션 비우기: 실제 컬렉션과 적재 기록 삭제(등록·프로젝트 지정은 유지) */
+  emptyCollection: (id: string) => post<{ collection: string; dropped: boolean; removed_indexes: number; removed_chunks: number }>(`/api/vector-collections/${id}/empty`, {}),
   vectorStoreHealth: (id: string) => post<VectorStore['last_health']>(`/api/vector-stores/${id}/health`),
 
   indexMeta: () => get<{ templates: { label: string; template: string }[]; template_fields: string[]; metrics: string[]; modes: string[] }>('/api/indexes/meta'),
