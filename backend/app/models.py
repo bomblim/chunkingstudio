@@ -248,6 +248,9 @@ class VectorStore(TimestampMixin, Base):
     uri: Mapped[str] = mapped_column(String(1000), default="")
     token_env: Mapped[str] = mapped_column(String(200), default="")  # "user:password" 또는 API 키
     db_name: Mapped[str] = mapped_column(String(200), default="")
+    # TLS(https://) 접속 시 신뢰할 CA 인증서 파일 경로(사설 CA일 때)와 인증서 검증용 호스트명 재지정
+    tls_ca_path: Mapped[str] = mapped_column(String(1000), default="")
+    tls_server_name: Mapped[str] = mapped_column(String(300), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 

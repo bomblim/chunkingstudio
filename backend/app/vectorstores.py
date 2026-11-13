@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -99,6 +100,38 @@ def open_store(store: VectorStore) -> Store:
 
 
 # ------------------------------------------------------------------ Milvus
+def tls_kwargs(uri: str, ca_path: str = "", server_name: str = "") -> dict[str, Any]:
+    """https:// URI면 TLS(gRPC secure channel)로 접속한다.
+
+    - ca_path: 사설 CA로 발급한 인증서를 신뢰하기 위한 CA(PEM) 파일. 비우면 gRPC 내장 공인 CA 목록만 신뢰한다.
+    - server_name: 인증서 검증에 쓸 호스트명(URI 호스트와 인증서 SAN이 다를 때).
+    """
+    ca_path, server_name = (ca_path or "").strip(), (server_name or "").strip()
+    if not uri.lower().startswith("https://"):
+        if ca_path or server_name:
+            raise VectorStoreError("TLS 설정(CA·서버 이름)은 URI가 https:// 일 때만 사용할 수 있습니다")
+        return {}
+    kwargs: dict[str, Any] = {"secure": True}
+    if ca_path:
+        if not os.path.isfile(ca_path):
+            raise VectorStoreError(f"CA 인증서 파일이 없습니다: {ca_path}")
+        kwargs["server_pem_path"] = ca_path
+    if server_name:
+        kwargs["server_name"] = server_name
+    return kwargs
+
+
+_CLIENTS: dict[int, tuple[tuple, Any]] = {}  # 저장소 id -> (접속 설정 fingerprint, MilvusClient)
+_CLIENTS_LOCK = threading.Lock()
+
+
+def _close_quietly(client: Any) -> None:
+    try:
+        client.close()
+    except Exception:  # pragma: no cover
+        pass
+
+
 class MilvusStore:
     def __init__(self, cfg: VectorStore):
         try:
@@ -110,11 +143,33 @@ class MilvusStore:
             token = os.environ.get(cfg.token_env, "")
             if not token:
                 raise VectorStoreError(f"환경변수 {cfg.token_env}가 비어 있습니다")
+        uri = cfg.uri or "http://localhost:19530"
+        tls = tls_kwargs(uri, cfg.tls_ca_path, cfg.tls_server_name)
+        # pymilvus는 공유 연결을 "주소|토큰"으로만 구분해 http/https·CA·서버 이름이 달라도 기존 연결을 재사용한다.
+        # 그래서 저장소마다 전용(dedicated) 연결을 만들고, 접속 설정이 바뀌면 새로 연결한다.
+        ca_mtime = os.path.getmtime(tls["server_pem_path"]) if "server_pem_path" in tls else 0.0
+        fingerprint = (uri, token, cfg.db_name or "", tuple(sorted(tls.items())), ca_mtime)
+        store_id = getattr(cfg, "id", None)
+        with _CLIENTS_LOCK:
+            cached = _CLIENTS.get(store_id) if store_id is not None else None
+            if cached and cached[0] == fingerprint:
+                self.client = cached[1]
+                return
         try:
-            self.client = MilvusClient(uri=cfg.uri or "http://localhost:19530", token=token,
-                                       db_name=cfg.db_name or "", timeout=10)
+            self.client = MilvusClient(uri=uri, token=token, db_name=cfg.db_name or "", timeout=10,
+                                       dedicated=True, **tls)
         except Exception as exc:
-            raise VectorStoreError(f"Milvus 연결 실패({cfg.uri}): {exc}") from exc
+            hint = ""
+            if uri.lower().startswith("https://"):
+                hint = (" — TLS 접속이면 인증서 검증 실패일 수 있습니다: 사설 CA면 'CA 인증서 경로'를, "
+                        "인증서 이름과 URI 호스트가 다르면 '인증서 서버 이름'을 확인하세요")
+            raise VectorStoreError(f"Milvus 연결 실패({cfg.uri}): {exc}{hint}") from exc
+        if store_id is not None:
+            with _CLIENTS_LOCK:
+                old = _CLIENTS.get(store_id)
+                _CLIENTS[store_id] = (fingerprint, self.client)
+            if old:
+                _close_quietly(old[1])
 
     def _call(self, fn, *args, **kwargs):
         try:

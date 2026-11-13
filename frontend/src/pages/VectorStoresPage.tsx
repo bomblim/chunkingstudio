@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { vapi, type VectorStoreInput } from '../api'
 import { Badge, ErrorBanner, Modal, useAsync } from '../components/ui'
 
-const EMPTY: VectorStoreInput = { name: '', kind: 'milvus', uri: 'http://localhost:19530', token_env: '', db_name: '', enabled: true }
+const EMPTY: VectorStoreInput = { name: '', kind: 'milvus', uri: 'http://localhost:19530', token_env: '', db_name: '', tls_ca_path: '', tls_server_name: '', enabled: true }
 
 export default function VectorStoresPage() {
   const stores = useAsync(() => vapi.vectorStores(), [])
@@ -28,7 +28,7 @@ export default function VectorStoresPage() {
               <tr key={s.id}>
                 <td><b>{s.name}</b></td>
                 <td>{s.kind === 'milvus' ? 'Milvus' : '메모리(개발용)'}</td>
-                <td className="mono small">{s.kind === 'milvus' ? <>{s.uri}{s.db_name && ` / ${s.db_name}`}</> : '-'}</td>
+                <td className="mono small">{s.kind === 'milvus' ? <>{s.uri}{s.db_name && ` / ${s.db_name}`}{s.uri.toLowerCase().startsWith('https://') && <span className="badge" style={{ marginLeft: 6 }} title={s.tls_ca_path ? `CA: ${s.tls_ca_path}` : '공인 CA로 검증'}>TLS</span>}</> : '-'}</td>
                 <td className="small">
                   {s.last_health.ok === undefined ? <span className="muted">미확인</span> : s.last_health.ok ? <Badge kind="ok">정상 {s.last_health.server_version} · {s.last_health.latency_ms}ms</Badge> : <Badge kind="err">실패</Badge>}
                   {s.last_health.ok === false && <div style={{ color: 'var(--danger)', maxWidth: 320 }}>{s.last_health.message}</div>}
@@ -78,6 +78,12 @@ function StoreForm({ initial, id, onClose, onSaved }: { initial: VectorStoreInpu
             <label className="field">URI<input value={d.uri} onChange={(e) => set('uri', e.target.value)} placeholder="http://localhost:19530" /></label>
             <label className="field">DB 이름 (비우면 default)<input value={d.db_name} onChange={(e) => set('db_name', e.target.value)} /></label>
             <label className="field">인증 토큰 환경변수<input value={d.token_env} onChange={(e) => set('token_env', e.target.value)} placeholder='MILVUS_TOKEN (값: "user:password" 또는 API 키)' /></label>
+            {d.uri.toLowerCase().startsWith('https://') && (
+              <>
+                <label className="field">CA 인증서 경로 (사설 CA일 때)<input value={d.tls_ca_path} onChange={(e) => set('tls_ca_path', e.target.value)} placeholder="/data/tls/ca.pem (서버 기준 경로)" /></label>
+                <label className="field">인증서 서버 이름 (선택)<input value={d.tls_server_name} onChange={(e) => set('tls_server_name', e.target.value)} placeholder="인증서 SAN과 URI 호스트가 다를 때" /></label>
+              </>
+            )}
           </>
         )}
       </div>

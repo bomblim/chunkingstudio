@@ -7,7 +7,7 @@
 #   milvus-offline-v3.0.6.tar.gz          docker load 로 올릴 이미지 묶음 (milvus, etcd, minio)
 #   milvus-offline-v3.0.6.tar.gz.sha256   무결성 확인용
 #   milvus-offline-v3.0.6.manifest.txt    이미지 목록과 digest
-#   milvus/docker-compose.yml, milvus/env.example, milvus/README.md
+#   milvus/docker-compose.yml, milvus/env.example, milvus/nginx-milvus*.conf, milvus/README.md
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -33,7 +33,9 @@ echo "==> 이미지 저장: dist/${NAME}.tar.gz"
 docker save "${IMAGES[@]}" | gzip -6 > "$OUT/${NAME}.tar.gz"
 ( cd "$OUT" && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256" )
 
-cp deploy/offline-milvus/docker-compose.yml deploy/offline-milvus/env.example deploy/offline-milvus/README.md "$OUT/milvus/"
+cp deploy/offline-milvus/docker-compose.yml deploy/offline-milvus/env.example \
+   deploy/offline-milvus/nginx-milvus.conf deploy/offline-milvus/nginx-milvus-admin.conf \
+   deploy/offline-milvus/README.md "$OUT/milvus/"
 
 {
   echo "bundle: ${NAME}"

@@ -103,6 +103,8 @@ class VectorStoreIn(BaseModel):
     uri: str = "http://localhost:19530"
     token_env: str = ""
     db_name: str = ""
+    tls_ca_path: str = ""
+    tls_server_name: str = ""
     enabled: bool = True
 
 

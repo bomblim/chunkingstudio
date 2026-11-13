@@ -59,6 +59,7 @@ curl http://localhost:8000/api/health
 - API 키(Upstage, LLM, 임베딩, Milvus 토큰)는 화면에 저장하지 않고 환경변수 이름만 등록합니다. 값은 `.env`에 둡니다.
 - 폐쇄망에서는 `CS_ALLOW_EXTERNAL_LLM=false`를 권장합니다. 외부 상용 API가 화면에서 숨겨지고 호출도 차단됩니다.
 - 사내 LLM(vLLM 등)·임베딩(TEI 등)·Parser·Milvus 주소는 컨테이너에서 접근 가능한 주소로 등록합니다. `localhost`는 컨테이너 자신을 가리킵니다.
+- Milvus를 TLS(`https://...:19530`)로 접속할 때 사내 CA 인증서는 `data/tls/ca.pem`처럼 `/data` 아래에 두고, 화면 **벡터 저장소**의 "CA 인증서 경로"에 `/data/tls/ca.pem`을 입력합니다. 구성 방법은 Milvus 번들 문서(`milvus-DEPLOY.md`)의 "엔진 TLS" 절을 참고하세요.
 
 ## 4. 업그레이드 · 백업
 

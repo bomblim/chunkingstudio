@@ -66,6 +66,7 @@ export interface DocumentSummary {
 export interface DocumentDetail extends DocumentSummary {
   content: StandardDocument
   has_source_file: boolean
+  source_kind: 'pdf' | 'image' | ''
   source_file_path: string
   revisions: { id: number; revision: number; created_at: string }[]
 }
@@ -289,6 +290,8 @@ export interface VectorStore {
   uri: string
   token_env: string
   db_name: string
+  tls_ca_path: string
+  tls_server_name: string
   enabled: boolean
   last_health: { ok?: boolean; message?: string; server_version?: string; collections?: string[]; latency_ms?: number; checked_at?: string }
 }

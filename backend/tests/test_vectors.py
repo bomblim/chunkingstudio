@@ -118,3 +118,18 @@ def test_milvus_round_trip(client):
                            json={"query": "통신비", "top_k": 5, "filter": f"run_id == {run['id']}"}).json()
     assert all(h["run_id"] == run["id"] for h in filtered["hits"])
     client.delete(f"/api/indexes/{ix['id']}", params={"drop_collection": True})
+
+
+def test_milvus_tls_kwargs(tmp_path):
+    from app.vectorstores import VectorStoreError, tls_kwargs
+
+    assert tls_kwargs("http://milvus:19530") == {}
+    assert tls_kwargs("https://milvus.example.com:19530") == {"secure": True}
+    ca = tmp_path / "ca.pem"
+    ca.write_text("dummy")
+    assert tls_kwargs("https://10.0.0.5:19530", str(ca), "milvus.example.com") == {
+        "secure": True, "server_pem_path": str(ca), "server_name": "milvus.example.com"}
+    with pytest.raises(VectorStoreError, match="https"):
+        tls_kwargs("http://milvus:19530", str(ca))
+    with pytest.raises(VectorStoreError, match="CA 인증서 파일이 없습니다"):
+        tls_kwargs("https://milvus:19530", str(tmp_path / "missing.pem"))

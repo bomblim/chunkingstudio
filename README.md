@@ -85,6 +85,8 @@ docker compose -f deploy/milvus/docker-compose.yml up -d
 2. **Playground**에서 청킹을 실행한 뒤 "벡터 DB 적재 →"를 누르거나, **벡터 인덱스·질의**에서 "청크 적재"를 누릅니다.
 3. 적재가 끝나면 같은 화면의 **질의 테스트**에서 검색 결과(점수·청크 원문·위치)를 확인합니다. Milvus는 `run_id == 3` 같은 필터도 쓸 수 있습니다.
 
+Milvus를 TLS로 접속하려면 저장소 URI를 `https://`로 등록합니다. 사설 CA면 "CA 인증서 경로", 인증서 이름과 접속 호스트가 다르면 "인증서 서버 이름"을 지정합니다. nginx로 TLS를 종료하는 구성은 [deploy/offline-milvus/README.md](deploy/offline-milvus/README.md) 4장을 참고하세요.
+
 컬렉션 필드: `id`, `vector`, `chunk_id`, `run_id`, `document_id`, `title`, `section_path`, `text`(청크 원문), `embed_text`(실제로 임베딩한 텍스트), `metadata`(JSON: element_ids, pages, tokens, 프롬프트 버전 등).
 
 테스트:

@@ -1,6 +1,7 @@
 # Milvus standalone — 폐쇄망 서버 실행용 (공식 v3.0.6 배포 파일 기반)
 #   docker compose up -d
-# 데이터는 이 파일 옆 ./volumes/ 에 저장된다. 포트는 .env로 바꿀 수 있다(MILVUS_PORT 등).
+# 데이터는 이 파일 옆 ./volumes/ 에 저장된다. 포트·바인딩 주소는 .env로 바꿀 수 있다(MILVUS_PORT, MILVUS_BIND 등).
+# nginx로 TLS를 종료할 때는 MILVUS_BIND=127.0.0.1 로 두고 nginx만 접속하게 한다(nginx-milvus.conf 참고).
 # Chunking Studio를 같은 서버에 띄우면 네트워크 'milvus'로 묶어 http://milvus-standalone:19530 으로 접속할 수 있다.
 
 x-milvus-image: &milvus-image milvusdb/milvus:v3.0.6
@@ -86,8 +87,8 @@ services:
       timeout: 20s
       retries: 3
     ports:
-      - "${MILVUS_PORT:-19530}:19530"
-      - "${MILVUS_HEALTH_PORT:-9091}:9091"
+      - "${MILVUS_BIND:-0.0.0.0}:${MILVUS_PORT:-19530}:19530"
+      - "${MILVUS_HEALTH_BIND:-0.0.0.0}:${MILVUS_HEALTH_PORT:-9091}:9091"
     depends_on:
       milvus-volume-init:
         condition: service_completed_successfully
