@@ -1,12 +1,13 @@
 """문서 유입·조회 API (IN-01~07, PV-08)."""
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -118,6 +119,7 @@ def get_document(doc_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     d = get_or_404(db, Document, doc_id)
     out = row_dict(d)
     out["has_source_file"] = bool(d.source_file_path and Path(d.source_file_path).exists())
+    out["source_kind"] = source_kind(d.source_file_path) if out["has_source_file"] else ""
     out["project_path"] = path_names(load_tree(db), d.project_id)
     out["revisions"] = [
         {"id": r.id, "revision": r.revision, "created_at": r.created_at}
@@ -135,6 +137,49 @@ def get_document_file(doc_id: int, db: Session = Depends(get_db)) -> FileRespons
     if not d.source_file_path or not Path(d.source_file_path).exists():
         raise HTTPException(404, "원본 파일이 없습니다")
     return FileResponse(d.source_file_path)
+
+
+# 원본 대조에 쓰는 이미지 원본. 브라우저가 직접 못 여는 형식(TIFF·BMP 등)과 여러 페이지 TIFF도 있어
+# 서버에서 페이지(프레임) 단위 PNG로 바꿔 내려준다.
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".jpe", ".bmp", ".tif", ".tiff", ".gif", ".webp", ".heic", ".heif"}
+PAGE_IMAGE_MAX = 2400  # 긴 변 기준(px). 오버레이 좌표는 비율로 그리므로 축소해도 위치는 같다.
+
+
+def source_kind(path: str | None) -> str:
+    """원본 파일 종류: pdf | image | "" (표시 불가)"""
+    ext = Path(path or "").suffix.lower()
+    if ext == ".pdf":
+        return "pdf"
+    if ext in IMAGE_EXTS:
+        return "image"
+    return ""
+
+
+@router.get("/documents/{doc_id}/page-image/{page_no}")
+def get_page_image(doc_id: int, page_no: int, db: Session = Depends(get_db)) -> Response:
+    d = get_or_404(db, Document, doc_id)
+    if not d.source_file_path or not Path(d.source_file_path).exists():
+        raise HTTPException(404, "원본 파일이 없습니다")
+    if source_kind(d.source_file_path) != "image":
+        raise HTTPException(400, "이미지 원본이 아닙니다")
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    try:
+        with Image.open(d.source_file_path) as im:
+            frames = getattr(im, "n_frames", 1)
+            if not 1 <= page_no <= frames:
+                raise HTTPException(404, f"페이지가 없습니다 (전체 {frames}페이지)")
+            im.seek(page_no - 1)
+            # 휴대폰 사진처럼 EXIF 회전 정보가 있으면 브라우저 표시와 같게 돌려 준다
+            frame = ImageOps.exif_transpose(im.copy())
+            if frame.mode not in ("RGB", "RGBA", "L", "LA"):
+                frame = frame.convert("RGBA" if "A" in frame.getbands() else "RGB")
+            frame.thumbnail((PAGE_IMAGE_MAX, PAGE_IMAGE_MAX))
+            buf = io.BytesIO()
+            frame.save(buf, format="PNG", optimize=False)
+    except UnidentifiedImageError as exc:
+        raise HTTPException(415, "이 이미지 형식은 서버에서 열 수 없습니다(HEIC 등). PNG·JPEG·TIFF로 변환해 올려 주세요") from exc
+    return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.delete("/documents/{doc_id}", status_code=204)

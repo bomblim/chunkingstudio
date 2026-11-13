@@ -35,6 +35,8 @@ interface Props {
   page: DocPage
   elements: DocElement[]
   pdf: PDFDocumentProxy | null
+  /** 이미지 원본(PDF가 아닐 때): 해당 페이지 이미지 URL */
+  imageUrl?: string | null
   width: number
   colorOf: (el: DocElement) => string
   selectedId?: string | null
@@ -43,17 +45,19 @@ interface Props {
 }
 
 /** PV-01/PV-05: 원본 페이지 위에 Element bbox를 색상 오버레이, reading_order 표시 */
-export function PageCanvas({ page, elements, pdf, width, colorOf, selectedId, onSelect, showOrder }: Props) {
+export function PageCanvas({ page, elements, pdf, imageUrl, width, colorOf, selectedId, onSelect, showOrder }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [pdfAspect, setPdfAspect] = useState<number | null>(null)
+  const [imgState, setImgState] = useState<{ url: string; aspect: number | null; failed: boolean } | null>(null)
+  const img = imageUrl && !pdf ? (imgState?.url === imageUrl ? imgState : { url: imageUrl, aspect: null, failed: false }) : null
   // 상대좌표(0~1, 예: Upstage): 페이지 크기가 1 이하로 기록되었거나, 크기 정보 없이 모든 좌표가 0~1 범위
   const maxCoord = Math.max(0, ...elements.map((e) => Math.max(e.bbox?.x1 ?? 0, e.bbox?.y1 ?? 0)))
   const relative = (page.width != null && page.width <= 1.5) || (page.width == null && maxCoord > 0 && maxCoord <= 1.0001)
   const pw = relative ? 1 : page.width ?? Math.max(612, ...elements.map((e) => e.bbox?.x1 ?? 0))
   const ph = relative ? 1 : page.height ?? Math.max(792, ...elements.map((e) => e.bbox?.y1 ?? 0))
-  // 원본 PDF가 있으면 그 페이지 비율을, 상대좌표인데 PDF가 없으면 A4 세로 비율을 쓴다.
+  // 원본(PDF 페이지·이미지)이 있으면 그 비율을, 상대좌표인데 원본이 없으면 A4 세로 비율을 쓴다.
   // SVG는 preserveAspectRatio="none"이라 좌표계가 컨테이너에 맞춰 늘어난다.
-  const height = width * (pdfAspect ?? (relative ? Math.SQRT2 : ph / pw))
+  const height = width * ((pdf ? pdfAspect : img?.aspect) ?? (relative ? Math.SQRT2 : ph / pw))
 
   useEffect(() => {
     if (!pdf || !canvasRef.current) return
@@ -86,7 +90,12 @@ export function PageCanvas({ page, elements, pdf, width, colorOf, selectedId, on
   return (
     <div className="page-canvas" style={{ width, height }}>
       {pdf && <canvas ref={canvasRef} />}
-      {!pdf && <span className="label">p.{page.page_no} (원본 이미지 없음)</span>}
+      {img && !img.failed && (
+        <img src={img.url} alt={`p.${page.page_no} 원본`} draggable={false}
+          onLoad={(e) => { const t = e.currentTarget; setImgState({ url: img.url, aspect: t.naturalHeight / t.naturalWidth, failed: false }) }}
+          onError={() => setImgState({ url: img.url, aspect: null, failed: true })} />
+      )}
+      {!pdf && (!img || img.failed) && <span className="label">p.{page.page_no} ({img?.failed ? '원본 이미지를 불러오지 못함' : '원본 이미지 없음'})</span>}
       <svg viewBox={`0 0 ${pw} ${ph}`} preserveAspectRatio="none">
         {ordered.map((e) => {
           const b = e.bbox!

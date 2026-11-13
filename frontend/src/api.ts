@@ -59,6 +59,7 @@ export const api = {
   document: (id: number) => get<DocumentDetail>(`/api/documents/${id}`),
   deleteDocument: (id: number) => del(`/api/documents/${id}`),
   documentFileUrl: (id: number) => `/api/documents/${id}/file`,
+  documentPageImageUrl: (id: number, pageNo: number) => `/api/documents/${id}/page-image/${pageNo}`,
   ingestBatch: (form: FormData) => post<{ imported: DocumentSummary[]; failed: { title: string; reason: string }[] }>('/api/ingest/batch', form),
   ingestFailures: () => get<{ id: number; source_name: string; reason: string; created_at: string }[]>('/api/ingest/failures'),
   testParse: (form: FormData) => post<ParseJob[]>('/api/test-parse', form),

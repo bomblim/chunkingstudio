@@ -38,7 +38,9 @@ export default function DocumentViewerPage() {
         { id: 'compare', label: '원본 대조' }, { id: 'tree', label: '구조 트리' },
         { id: 'quality', label: '품질 지표' }, { id: 'raw', label: 'Raw JSON' },
       ]} />
-      {tab === 'compare' && <CompareView elements={d.content.elements} pages={d.content.pages} fileUrl={d.has_source_file && d.source_file_path.toLowerCase().endsWith('.pdf') ? api.documentFileUrl(d.id) : null} />}
+      {tab === 'compare' && <CompareView elements={d.content.elements} pages={d.content.pages}
+        fileUrl={d.source_kind === 'pdf' ? api.documentFileUrl(d.id) : null}
+        pageImageUrl={d.source_kind === 'image' ? (n: number) => api.documentPageImageUrl(d.id, n) : null} />}
       {tab === 'tree' && <TreeView elements={d.content.elements} />}
       {tab === 'quality' && <QualityView stats={d.stats} />}
       {tab === 'raw' && <div className="card"><pre className="code-box" style={{ maxHeight: '70vh' }}>{JSON.stringify(d.content, null, 2)}</pre></div>}
@@ -46,7 +48,7 @@ export default function DocumentViewerPage() {
   )
 }
 
-function CompareView({ elements, pages, fileUrl }: { elements: DocElement[]; pages: { page_no: number; width: number | null; height: number | null; image_ref: string | null }[]; fileUrl: string | null }) {
+function CompareView({ elements, pages, fileUrl, pageImageUrl }: { elements: DocElement[]; pages: { page_no: number; width: number | null; height: number | null; image_ref: string | null }[]; fileUrl: string | null; pageImageUrl: ((pageNo: number) => string) | null }) {
   const pdf = usePdf(fileUrl)
   const [selected, setSelected] = useState<string | null>(null)
   const [types, setTypes] = useState<string[]>([])
@@ -105,7 +107,7 @@ function CompareView({ elements, pages, fileUrl }: { elements: DocElement[]; pag
       <div className="viewer">
         <div className="card scroll" style={{ maxHeight: '75vh' }} ref={paneRef}>
           {hasBbox ? (
-            <PageCanvas page={page} elements={elements.filter((e) => (e.page ?? 1) === pageNo && (!types.length || types.includes(e.type)))} pdf={pdf} width={pageWidth}
+            <PageCanvas page={page} elements={elements.filter((e) => (e.page ?? 1) === pageNo && (!types.length || types.includes(e.type)))} pdf={pdf} imageUrl={pageImageUrl?.(pageNo) ?? null} width={pageWidth}
               colorOf={(e) => TYPE_COLORS[e.type] ?? '#888'} selectedId={selected} onSelect={select} showOrder={showOrder} />
           ) : (
             <div className="banner info">이 Parser 결과에는 bbox 좌표가 없어 원본 페이지 오버레이를 표시할 수 없습니다. 오른쪽 텍스트 뷰로 확인하세요.</div>

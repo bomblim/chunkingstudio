@@ -146,7 +146,7 @@ table.list tr.clickable:hover td { background: var(--surface-2); cursor: pointer
 /* ---------------------------------------------------------------- 문서 뷰 */
 .viewer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .page-canvas { position: relative; background: #fff; border: 1px solid var(--border); margin: 0 auto 12px; }
-.page-canvas canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.page-canvas canvas, .page-canvas > img { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; }
 .page-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .page-canvas .label { position: absolute; top: 4px; left: 6px; font-size: 11px; color: #667; }
 .el-list { display: flex; flex-direction: column; gap: 4px; }
