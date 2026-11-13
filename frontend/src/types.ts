@@ -480,3 +480,31 @@ export interface ApiKey {
   created_at: string
   key?: string
 }
+
+/** 화면 로그인 사용자 */
+export interface User {
+  id: string
+  username: string
+  display_name: string
+  enabled: boolean
+  last_login_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** 저장소 화면: 컬렉션에 실제 저장된 청크 */
+export type StoredChunk = Omit<SearchHit, 'score' | 'vector_rank' | 'rerank_score'>
+
+export interface CollectionContents {
+  collection: { id: string; name: string; is_default: boolean; description: string }
+  store: { id: string; name: string; kind: 'milvus' | 'memory' }
+  embedding_model: string | null
+  index: { id: string; metric: string; dimension: number | null; embed_template: string; warnings: string[] } | null
+  documents: { document_id: string; title: string; run_id: string; method: string; chunk_count: number | null; chunked_at: string; project_path: string[] }[]
+  exists: boolean
+  total: number
+  items: StoredChunk[]
+  limit: number
+  offset: number
+  error?: string
+}

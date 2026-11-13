@@ -61,6 +61,10 @@ curl http://localhost:8000/api/health
 - 사내 LLM(vLLM 등)·임베딩(TEI 등)·Parser·Milvus 주소는 컨테이너에서 접근 가능한 주소로 등록합니다. `localhost`는 컨테이너 자신을 가리킵니다.
 - Milvus를 TLS(`https://...:19530`)로 접속할 때 사내 CA 인증서는 `data/tls/ca.pem`처럼 `/data` 아래에 두고, 화면 **벡터 저장소**의 "CA 인증서 경로"에 `/data/tls/ca.pem`을 입력합니다. 구성 방법은 Milvus 번들 문서(`milvus-DEPLOY.md`)의 "엔진 TLS" 절을 참고하세요.
 
+## 3-1. 첫 로그인
+
+처음 접속하면 사용자가 없으므로 **최초 관리자 만들기** 화면이 나옵니다. 아이디·비밀번호를 정하면 바로 로그인되고, 이후 사용자는 **관리 → 사용자**에서 추가합니다. 서버를 띄우자마자 계정을 고정하려면 `.env`에 `CS_ADMIN_USERNAME`·`CS_ADMIN_PASSWORD`를 넣고 시작하세요(사용자가 없을 때만 적용). 첫 화면을 다른 사람이 먼저 열지 않도록, 설치 직후 바로 관리자를 만드는 것을 권장합니다.
+
 ## 4. 업그레이드 · 백업
 
 - 업그레이드: 새 tar를 `docker load` → `docker-compose.yml`의 이미지 태그 변경 → `docker compose up -d`. DB에 새 컬럼이 생기면 시작할 때 자동으로 추가됩니다.

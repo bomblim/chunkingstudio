@@ -51,6 +51,7 @@ class Store(Protocol):
     def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
                principals: list[str] | None = None) -> list[SearchHit]: ...
     def count(self, name: str) -> int: ...
+    def browse(self, name: str, document_id: str | None, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]: ...
 
 
 def _type_name(t: Any) -> str:
@@ -279,6 +280,22 @@ class MilvusStore:
         stats = self._call(self.client.get_collection_stats, name)
         return int(stats.get("row_count", 0))
 
+    def browse(self, name: str, document_id: str | None, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        """질의 없이 저장된 청크를 훑어본다(저장 순서와 무관, 페이지 단위)."""
+        self._call(self.client.load_collection, name)
+        legacy = self.describe(name).get("legacy_int_ids")
+        if document_id:
+            if legacy:
+                raise VectorStoreError("정수 ID로 적재된 이전 형식 컬렉션은 문서별로 걸러 볼 수 없습니다. 비우고 다시 적재하세요")
+            expr = f'document_id == "{_uuid_literal(document_id)}"'
+        else:
+            expr = 'id != ""'
+        total = self._call(self.client.query, collection_name=name, filter=expr, output_fields=["count(*)"])
+        total_n = int(total[0].get("count(*)", 0)) if total else 0
+        rows = self._call(self.client.query, collection_name=name, filter=expr,
+                          output_fields=["id", *SCALAR_FIELDS], limit=limit, offset=offset)
+        return [dict(r) for r in rows], total_n
+
 
 # ------------------------------------------------------------------ Memory (개발용)
 class MemoryStore:
@@ -365,6 +382,12 @@ class MemoryStore:
 
     def count(self, name: str) -> int:
         return len(self._load(name)["rows"])
+
+    def browse(self, name: str, document_id: str | None, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
+        rows = [r for r in self._load(name)["rows"].values() if not document_id or r.get("document_id") == document_id]
+        rows.sort(key=lambda r: r.get("id", ""))
+        page = [{k: r.get(k) for k in ("id", *SCALAR_FIELDS)} for r in rows[offset:offset + limit]]
+        return page, len(rows)
 
 
 def timed(fn, *args, **kwargs) -> tuple[Any, int]:

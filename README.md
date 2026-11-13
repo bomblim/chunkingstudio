@@ -86,7 +86,8 @@ docker compose -f deploy/milvus/docker-compose.yml up -d
 
 2. **청킹** 화면에서 청킹을 실행한 뒤 "벡터 DB 적재 →"를 누르거나, **질의 테스트**에서 "청크 적재"를 누릅니다. 적재 위치는 문서의 프로젝트에 지정된 컬렉션으로 정해집니다(미분류는 기본 컬렉션).
 3. 적재가 끝나면 같은 화면의 **질의 테스트**에서 검색 결과(점수·청크 원문·위치)를 확인합니다. Milvus는 `run_id == 3` 같은 필터도 쓸 수 있습니다.
-4. (선택) **리랭크**: "리랭크 모델"에 cross-encoder를 등록하고 질의 테스트에서 고르면, 벡터 검색 후보(기본 Top-K×4, 최소 20)를 리랭크 점수로 다시 정렬해 상위 Top-K를 보여 줍니다. 결과에 리랭크 점수와 함께 벡터 점수·원래 순위(▲▼)가 표시됩니다. 지원 형식: TEI `/rerank`, Cohere 형식 `/rerank`(vLLM `--task score`, Infinity, Xinference, Jina, Cohere). 오프라인 확인용 Mock 리랭커가 기본 등록되어 있습니다.
+4. **저장소** 메뉴(청킹 아래)에서 컬렉션을 고르면 적재된 문서 목록과 실제 저장된 청크(원문·메타데이터·권한)를 질의 없이 페이지 단위로 볼 수 있습니다.
+5. (선택) **리랭크**: "리랭크 모델"에 cross-encoder를 등록하고 질의 테스트에서 고르면, 벡터 검색 후보(기본 Top-K×4, 최소 20)를 리랭크 점수로 다시 정렬해 상위 Top-K를 보여 줍니다. 결과에 리랭크 점수와 함께 벡터 점수·원래 순위(▲▼)가 표시됩니다. 지원 형식: TEI `/rerank`, Cohere 형식 `/rerank`(vLLM `--task score`, Infinity, Xinference, Jina, Cohere). 오프라인 확인용 Mock 리랭커가 기본 등록되어 있습니다.
 
    ```bash
    docker run --gpus all -p 8081:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id BAAI/bge-reranker-v2-m3
@@ -135,6 +136,10 @@ LLM API 키와 Parser 인증값은 DB에 저장하지 않고, 모델·Parser에 
 - **Chunking Studio** (Red Hat UBI 9, 화면+API 단일 컨테이너): [deploy/offline/README.md](deploy/offline/README.md) — `deploy/offline/build.sh <버전>`
 - **Milvus** (공식 v3.0.6 이미지 묶음): [deploy/offline-milvus/README.md](deploy/offline-milvus/README.md) — `deploy/offline-milvus/build.sh`
 
+## 로그인 · 사용자
+
+화면과 화면용 `/api`는 **로그인 필수**입니다(아이디·비밀번호, 비밀번호는 PBKDF2 해시로 저장, 세션은 HttpOnly 쿠키). 사용자가 하나도 없으면 첫 화면에서 **최초 관리자**를 만들거나, `.env`의 `CS_ADMIN_USERNAME`·`CS_ADMIN_PASSWORD`로 시작 시 자동 생성합니다. 이후 사용자는 **관리 → 사용자**에서 추가·비밀번호 재설정·사용 중지·삭제합니다(자기 자신과 마지막 계정은 중지·삭제 불가). 사이드바 아래 이름을 누르면 내 비밀번호를 바꿉니다. 외부 시스템은 로그인 대신 API 키로 `/api/v1`을 호출합니다.
+
 ## 주요 API
 
 외부 시스템은 **`/api/v1`**을 씁니다. **API 키가 필요**하며(화면 **API 안내 → API 키 관리**에서 발급), `Authorization: Bearer <키>` 또는 `X-API-Key` 헤더로 보냅니다. 키가 없거나 틀리면 `401`입니다.
@@ -148,7 +153,7 @@ LLM API 키와 Parser 인증값은 DB에 저장하지 않고, 모델·Parser에 
 | 5. 질의 | `POST /api/v1/indexes/{id}/query` `{query, top_k, principals?, rerank_model_id?}` |
 | ID 조회 | `GET /api/v1/parsers` · `/projects` · `/embedding-models` · `/rerank-models` |
 
-화면이 쓰는 `/api/…`(키 없음)는 내부망·프록시로만 열어 두는 전제입니다. 모든 ID는 UUID 문자열입니다(JSON에서는 따옴표로 감싸고, Milvus 필터도 `run_id == "…"` 형식). curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
+화면이 쓰는 `/api/…`는 로그인 세션으로 보호됩니다. 모든 ID는 UUID 문자열입니다(JSON에서는 따옴표로 감싸고, Milvus 필터도 `run_id == "…"` 형식). curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
 
 ## 문서
 

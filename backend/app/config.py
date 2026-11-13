@@ -69,6 +69,11 @@ class Settings:
     static_dir: Path | None = field(
         default_factory=lambda: Path(os.environ["CS_STATIC_DIR"]) if os.environ.get("CS_STATIC_DIR") else None
     )
+    # 로그인 세션 유지 시간(시간). 사용하는 동안에는 연장된다
+    session_hours: float = field(default_factory=lambda: float(os.environ.get("CS_SESSION_HOURS", "12")))
+    # 사용자가 하나도 없을 때 시작하면서 만들 첫 관리자 계정 (비우면 화면의 "최초 관리자 만들기"로 생성)
+    admin_username: str = field(default_factory=lambda: os.environ.get("CS_ADMIN_USERNAME", "").strip())
+    admin_password: str = field(default_factory=lambda: os.environ.get("CS_ADMIN_PASSWORD", ""))
     # 시드 시 기본 Milvus 저장소 주소
     milvus_uri: str = field(default_factory=lambda: os.environ.get("CS_MILVUS_URI", "http://localhost:19530"))
 

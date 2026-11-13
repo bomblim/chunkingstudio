@@ -1,10 +1,14 @@
 import type {
   ApiKey,
+  CollectionContents,
+  User,
   IndexPlan,
   IndexTarget,
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
   Project, ProjectTree, PromptVersion, QueryResult, RerankModel, RunDetail, RunSummary, VectorCollection, VectorIndex, VectorStore,
 } from './types'
+
+export const UNAUTHORIZED_EVENT = 'cs:unauthorized'
 
 export class ApiError extends Error {
   status: number
@@ -23,6 +27,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     init.headers = { 'Content-Type': 'application/json' }
   }
   const res = await fetch(url, init)
+  if (res.status === 401 && !url.startsWith('/api/auth/')) {
+    // 세션 만료·로그아웃·계정 중지: 앱이 로그인 화면으로 돌아가도록 알린다
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`
     try {
@@ -134,6 +142,8 @@ export const vapi = {
   createCollection: (storeId: string, c: CollectionInput) => post<VectorCollection>(`/api/vector-stores/${storeId}/collections`, c),
   updateCollection: (id: string, c: CollectionInput) => put<VectorCollection>(`/api/vector-collections/${id}`, c),
   deleteCollection: (id: string) => del(`/api/vector-collections/${id}`),
+  collectionContents: (id: string, q: { document_id?: string; limit?: number; offset?: number }) =>
+    get<CollectionContents>(`/api/vector-collections/${id}/contents${qs(q)}`),
   /** 컬렉션 비우기: 실제 컬렉션과 적재 기록 삭제(등록·프로젝트 지정은 유지) */
   emptyCollection: (id: string) => post<{ collection: string; dropped: boolean; removed_indexes: number; removed_chunks: number }>(`/api/vector-collections/${id}/empty`, {}),
   vectorStoreHealth: (id: string) => post<VectorStore['last_health']>(`/api/vector-stores/${id}/health`),
@@ -175,4 +185,21 @@ export const kapi = {
   apiKeys: () => get<ApiKey[]>('/api/api-keys'),
   createApiKey: (name: string) => post<ApiKey & { key: string }>('/api/api-keys', { name }),
   deleteApiKey: (id: string) => del(`/api/api-keys/${id}`),
+}
+
+/** 화면 로그인 */
+export const authApi = {
+  status: () => get<{ user: User | null; setup_required: boolean }>('/api/auth/status'),
+  setup: (username: string, password: string, display_name: string) => post<User>('/api/auth/setup', { username, password, display_name }),
+  login: (username: string, password: string) => post<User>('/api/auth/login', { username, password }),
+  logout: () => post<void>('/api/auth/logout'),
+  changePassword: (current_password: string, new_password: string) => post<void>('/api/auth/password', { current_password, new_password }),
+}
+
+/** 사용자 관리 */
+export const usersApi = {
+  list: () => get<User[]>('/api/users'),
+  create: (username: string, password: string, display_name: string) => post<User>('/api/users', { username, password, display_name }),
+  update: (id: string, body: { display_name?: string; enabled?: boolean; password?: string }) => patch<User>(`/api/users/${id}`, body),
+  remove: (id: string) => del(`/api/users/${id}`),
 }

@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import dev, documents, external, llm_models, parsers, projects, prompts, runs, vectors
+from .api import dev, documents, external, llm_models, parsers, projects, prompts, runs, users, vectors
+from .auth import ensure_initial_admin, require_user
 from .config import settings
 from .db import Base, SessionLocal, add_missing_columns, engine
 from .migrate_uuid import migrate_int_ids_to_uuid
@@ -22,6 +23,8 @@ async def lifespan(app: FastAPI):
 
         with SessionLocal() as db:
             seed(db)
+    with SessionLocal() as db:
+        ensure_initial_admin(db)  # .env의 CS_ADMIN_USERNAME·CS_ADMIN_PASSWORD (사용자가 없을 때만)
     yield
 
 
@@ -30,8 +33,12 @@ app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True, allow_methods=["*"],
     allow_headers=["*"],
 )
+# 화면용 API: 로그인 필수
 for r in (parsers.router, documents.router, llm_models.router, prompts.router, runs.router, vectors.router, projects.router,
-          external.keys_router, external.v1):
+          external.keys_router):
+    app.include_router(r, dependencies=[Depends(require_user)])
+# 로그인 자체·사용자 관리(내부에서 로그인 확인), 외부용 /api/v1(API 키)
+for r in (users.auth_router, users.users_router, external.v1):
     app.include_router(r)
 if settings.enable_sample_parser:
     app.include_router(dev.router)

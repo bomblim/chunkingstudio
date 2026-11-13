@@ -25,4 +25,7 @@ def client():
             return call_parser(parser, file_name, data, params, client=c)
 
         services.call_parser = _call  # type: ignore[assignment]
+        # 화면용 /api 는 로그인 필수: 최초 관리자를 만들면 바로 로그인된다(쿠키 유지)
+        r = c.post("/api/auth/setup", json={"username": "tester", "password": "test-password-1"})
+        assert r.status_code == 201, r.text
         yield c

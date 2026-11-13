@@ -81,7 +81,7 @@ export default function DocumentsPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>문서</h1>
+          <h1>문서 및 파싱</h1>
           <p>프로젝트(문서 분류) 단위로 문서를 관리합니다. 같은 프로젝트의 문서는 같은 청킹 프로파일을 씁니다.</p>
         </div>
         <div className="row">

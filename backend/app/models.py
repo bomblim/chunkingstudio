@@ -50,6 +50,31 @@ class Parser(TimestampMixin, Base):
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class User(TimestampMixin, Base):
+    """Studio 화면 로그인 사용자 (아이디·비밀번호)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(200), default="")
+    # pbkdf2_sha256$<반복>$<솔트 b64>$<해시 b64>
+    password_hash: Mapped[str] = mapped_column(String(300))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuthSession(TimestampMixin, Base):
+    """로그인 세션. 브라우저 쿠키에는 토큰 원문, DB에는 sha256만 둔다."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ApiKey(TimestampMixin, Base):
     """외부 시스템용 API 키 (/api/v1). 키 원문은 발급할 때 한 번만 보여 주고 해시만 저장한다."""
 

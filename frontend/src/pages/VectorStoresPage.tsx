@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { vapi, type CollectionInput, type VectorStoreInput } from '../api'
-import { Badge, ErrorBanner, Modal, useAsync } from '../components/ui'
+import { Badge, ConfirmModal, ErrorBanner, Modal, useAsync } from '../components/ui'
 import type { VectorCollection, VectorStore } from '../types'
 
 const EMPTY: VectorStoreInput = { name: '', kind: 'milvus', uri: 'http://localhost:19530', token_env: '', db_name: '', tls_ca_path: '', tls_server_name: '', enabled: true }
@@ -12,19 +12,15 @@ export default function VectorStoresPage() {
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [emptying, setEmptying] = useState<{ store: VectorStore; coll: VectorCollection } | null>(null)
 
   const act = async (fn: () => Promise<unknown>) => {
     setError('')
     setNotice('')
     try { await fn(); void stores.reload() } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   }
-  const empty = (s: VectorStore, c: VectorCollection) => {
-    const users = c.projects.length ? `
-사용 중인 프로젝트: ${c.projects.join(', ')}` : ''
-    if (!confirm(`'${s.name}'의 '${c.name}' 컬렉션을 비울까요?
-적재된 청크${c.chunk_count ? ` ${c.chunk_count}개` : ''}가 모두 지워지고 되돌릴 수 없습니다.${users}
-컬렉션 등록과 프로젝트 지정은 그대로 남고, 다음 적재 때 새로 만들어집니다.`)) return
-    void act(async () => {
+  const empty = (c: VectorCollection) =>
+    act(async () => {
       setBusy(c.id)
       try {
         const r = await vapi.emptyCollection(c.id)
@@ -35,7 +31,6 @@ export default function VectorStoresPage() {
         setBusy(undefined)
       }
     })
-  }
   const makeDefault = (c: VectorCollection) => act(() => vapi.updateCollection(c.id, { name: c.name, description: c.description, is_default: true }))
   const remove = (c: VectorCollection) => {
     if (!confirm(`'${c.name}' 컬렉션 등록을 삭제할까요?\nMilvus에 적재된 실제 데이터는 지워지지 않습니다.`)) return
@@ -103,7 +98,7 @@ export default function VectorStoresPage() {
                     <td>{c.chunk_count ?? <span className="muted">-</span>}</td>
                     <td className="row">
                       <button className="sm" onClick={() => setCollEdit({ store: s, coll: c })}>수정</button>
-                      <button className="sm" disabled={!s.enabled || busy === c.id} title="적재된 청크를 모두 지웁니다 (등록·프로젝트 지정은 유지)" onClick={() => empty(s, c)}>{busy === c.id ? '비우는 중…' : '비우기'}</button>
+                      <button className="sm" disabled={!s.enabled || busy === c.id} title="적재된 청크를 모두 지웁니다 (등록·프로젝트 지정은 유지)" onClick={() => setEmptying({ store: s, coll: c })}>{busy === c.id ? '비우는 중…' : '비우기'}</button>
                       {!c.is_default && <button className="sm" disabled={!s.enabled} onClick={() => void makeDefault(c)}>기본으로</button>}
                       {!c.is_default && <button className="sm danger" disabled={c.projects.length > 0} title={c.projects.length ? '사용 중인 프로젝트가 있어 삭제할 수 없습니다' : undefined} onClick={() => remove(c)}>삭제</button>}
                     </td>
@@ -118,6 +113,20 @@ export default function VectorStoresPage() {
 
       {edit && <StoreForm initial={edit.data} id={edit.id} hasDefault={!!stores.data?.find((s) => s.id === edit.id)?.collections.some((c) => c.is_default)}
         onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void stores.reload() }} />}
+      {emptying && (
+        <ConfirmModal title="컬렉션 비우기" danger confirmLabel="비우기" onClose={() => setEmptying(null)}
+          onConfirm={async () => { const c = emptying.coll; setEmptying(null); await empty(c) }}>
+          <p style={{ marginTop: 0 }}>
+            <b>{emptying.store.name}</b>의 <span className="mono"><b>{emptying.coll.name}</b></span> 컬렉션을 비울까요?
+          </p>
+          <div className="banner warn small">
+            적재된 청크{emptying.coll.chunk_count ? <b> {emptying.coll.chunk_count}개</b> : ''}가 벡터 저장소에서 모두 지워지고 <b>되돌릴 수 없습니다</b>.
+          </div>
+          {emptying.coll.projects.length > 0 && <p className="small">이 컬렉션을 쓰는 프로젝트: <b>{emptying.coll.projects.join(', ')}</b> — 질의하려면 다시 적재해야 합니다.</p>}
+          {emptying.coll.is_default && <p className="small">기본 컬렉션입니다. 미분류 문서와 컬렉션을 지정하지 않은 프로젝트의 청크도 함께 지워집니다.</p>}
+          <p className="small muted" style={{ marginBottom: 0 }}>컬렉션 등록과 프로젝트 지정은 그대로 남고, 다음 적재 때 컬렉션이 새로 만들어집니다.</p>
+        </ConfirmModal>
+      )}
       {collEdit && <CollectionForm store={collEdit.store} coll={collEdit.coll} onClose={() => setCollEdit(null)} onSaved={() => { setCollEdit(null); void stores.reload() }} />}
     </>
   )

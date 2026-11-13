@@ -351,6 +351,46 @@ def empty_collection(collection_id: str, db: Session = Depends(get_db)) -> dict[
     return {"collection": c.name, "dropped": existed, "removed_indexes": len(indexes), "removed_chunks": removed_chunks}
 
 
+@router.get("/vector-collections/{collection_id}/contents")
+def collection_contents(collection_id: str, document_id: str | None = None, limit: int = 30, offset: int = 0,
+                        db: Session = Depends(get_db)) -> dict[str, Any]:
+    """저장소(컬렉션)에 적재된 내용: 문서별 요약(Studio 적재 기록)과 실제 저장된 청크(페이지 단위)."""
+    c = get_or_404(db, VectorCollection, collection_id)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    indexes = list(db.scalars(select(VectorIndex).where(VectorIndex.store_id == c.store_id,
+                                                        VectorIndex.collection == c.name)))
+    run_ids = sorted({r for ix in indexes for r in (ix.run_ids or [])})
+    documents = []
+    if run_ids:
+        rows = db.execute(select(ChunkRun.id, ChunkRun.document_id, ChunkRun.method, ChunkRun.totals, ChunkRun.created_at,
+                                 Document.title, Document.project_id)
+                          .join(Document, Document.id == ChunkRun.document_id)
+                          .where(ChunkRun.id.in_(run_ids)).order_by(Document.title)).all()
+        tree = load_tree(db)
+        from ..projects import path_names
+        documents = [{"document_id": r.document_id, "title": r.title, "run_id": r.id, "method": r.method,
+                      "chunk_count": (r.totals or {}).get("chunk_count"), "chunked_at": r.created_at,
+                      "project_path": path_names(tree, r.project_id)} for r in rows]
+    model = db.get(EmbeddingModel, indexes[0].embedding_model_id) if indexes else None
+    out: dict[str, Any] = {
+        "collection": {"id": c.id, "name": c.name, "is_default": c.is_default, "description": c.description},
+        "store": {"id": c.store.id, "name": c.store.name, "kind": c.store.kind},
+        "embedding_model": model.name if model else None,
+        "index": {"id": indexes[0].id, "metric": indexes[0].metric, "dimension": indexes[0].dimension,
+                  "embed_template": indexes[0].embed_template, "warnings": indexes[0].warnings} if indexes else None,
+        "documents": documents, "exists": False, "total": 0, "items": [], "limit": limit, "offset": offset,
+    }
+    try:
+        store = open_store(c.store)
+        if store.has_collection(c.name):
+            out["exists"] = True
+            out["items"], out["total"] = store.browse(c.name, document_id, limit, offset)
+    except VectorStoreError as exc:
+        out["error"] = str(exc)
+    return out
+
+
 @router.post("/vector-stores/{store_id}/health")
 def vector_store_health(store_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     s = get_or_404(db, VectorStore, store_id)

@@ -113,3 +113,25 @@ export const shortId = (id?: string | null) => (id ? `#${id.slice(-8)}` : '')
 export function Sid({ id }: { id?: string | null }) {
   return <span className="mono" title={id ?? undefined}>{shortId(id)}</span>
 }
+
+/** 확인 팝업(레이어). 되돌릴 수 없는 작업 전에 브라우저 confirm 대신 쓴다 */
+export function ConfirmModal({ title, children, confirmLabel = '확인', danger, onConfirm, onClose }: {
+  title: string
+  children: ReactNode
+  confirmLabel?: string
+  danger?: boolean
+  onConfirm: () => void | Promise<void>
+  onClose: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    setBusy(true)
+    try { await onConfirm() } finally { setBusy(false) }
+  }
+  return (
+    <Modal title={title} onClose={busy ? () => undefined : onClose}
+      footer={<><button onClick={onClose} disabled={busy}>취소</button><button className={danger ? 'danger' : 'primary'} disabled={busy} onClick={() => void run()} autoFocus>{busy ? '처리 중…' : confirmLabel}</button></>}>
+      {children}
+    </Modal>
+  )
+}

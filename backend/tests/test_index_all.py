@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import time
+
+import pytest
 
 
 def _wait(client, url, key="status"):
@@ -197,3 +200,57 @@ def test_empty_collection(client):
     # 빈 컬렉션을 다시 비워도 오류 없이 처리
     assert client.post(f"/api/vector-collections/{coll['id']}/empty").json()["removed_indexes"] == 1
     assert client.post(f"/api/vector-collections/{coll['id']}/empty").json()["dropped"] is False
+
+
+def test_collection_contents(client):
+    parser_id, emb_id = _ctx(client)
+    conn = _conn(client, "내용 보기 테스트")
+    coll = _coll(client, conn["id"], "cs_t_browse")
+    empty = client.get(f"/api/vector-collections/{coll['id']}/contents").json()
+    assert empty["exists"] is False and empty["total"] == 0 and empty["documents"] == []
+
+    proj = client.post("/api/projects", json={"name": "내용 보기", "method": "rule_structure",
+                                              "vector_collection_id": coll["id"]}).json()
+    runs = []
+    for title in ("내용A", "내용B"):
+        d = _doc(client, parser_id, title, proj["id"])
+        run = _run(client, d["id"])
+        ix = _wait(client, f"/api/indexes/{client.post('/api/indexes', json={'run_id': run['id'], 'embedding_model_id': emb_id}).json()['id']}")
+        assert ix["status"] == "done"
+        runs.append((d, run))
+    total = sum(r["totals"]["chunk_count"] for _, r in runs)
+
+    page = client.get(f"/api/vector-collections/{coll['id']}/contents", params={"limit": 2}).json()
+    assert page["exists"] and page["total"] == total and len(page["items"]) == 2
+    assert {d["title"] for d in page["documents"]} == {"내용A", "내용B"}
+    assert page["embedding_model"] and page["index"]["metric"] == "COSINE"
+    item = page["items"][0]
+    assert item["text"] and item["chunk_id"] and item["metadata"]["project_path"] == ["내용 보기"]
+    nxt = client.get(f"/api/vector-collections/{coll['id']}/contents", params={"limit": 2, "offset": 2}).json()
+    assert {i["id"] for i in nxt["items"]}.isdisjoint({i["id"] for i in page["items"]})
+
+    a_doc, a_run = runs[0]
+    only_a = client.get(f"/api/vector-collections/{coll['id']}/contents", params={"document_id": a_doc["id"], "limit": 100}).json()
+    assert only_a["total"] == a_run["totals"]["chunk_count"] and all(i["document_id"] == a_doc["id"] for i in only_a["items"])
+
+
+
+@pytest.mark.skipif(not os.environ.get("CS_TEST_MILVUS_URI"), reason="CS_TEST_MILVUS_URI 미설정 (실제 Milvus 필요)")
+def test_collection_contents_milvus(client):
+    parser_id, emb_id = _ctx(client)
+    conn = client.post("/api/vector-stores", json={"name": "milvus 내용 보기", "kind": "milvus",
+                                                   "uri": os.environ["CS_TEST_MILVUS_URI"]}).json()
+    coll = _coll(client, conn["id"], "cs_pytest_browse")
+    client.post(f"/api/vector-collections/{coll['id']}/empty")  # 이전 실행 잔여물 정리
+    proj = client.post("/api/projects", json={"name": "milvus 내용", "method": "rule_structure",
+                                              "vector_collection_id": coll["id"]}).json()
+    d = _doc(client, parser_id, "밀버스 문서", proj["id"])
+    run = _run(client, d["id"])
+    ix = _wait(client, f"/api/indexes/{client.post('/api/indexes', json={'run_id': run['id'], 'embedding_model_id': emb_id}).json()['id']}")
+    assert ix["status"] == "done", ix["error"]
+    page = client.get(f"/api/vector-collections/{coll['id']}/contents", params={"limit": 3}).json()
+    assert page["exists"] and page["total"] == run["totals"]["chunk_count"] and "error" not in page
+    assert len(page["items"]) == min(3, page["total"]) and page["items"][0]["text"]
+    only = client.get(f"/api/vector-collections/{coll['id']}/contents", params={"document_id": d["id"]}).json()
+    assert only["total"] == run["totals"]["chunk_count"]
+    client.post(f"/api/vector-collections/{coll['id']}/empty")

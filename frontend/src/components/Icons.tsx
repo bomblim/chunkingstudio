@@ -18,6 +18,7 @@ export function LogoIcon({ size = 22 }: { size?: number }) {
 export const icons = {
   documents: <Svg><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" /></Svg>,
   chunking: <Svg><rect x="4" y="4" width="16" height="5" rx="1.5" /><rect x="4" y="11" width="10" height="4" rx="1.5" /><rect x="4" y="17" width="13" height="3" rx="1.2" /></Svg>,
+  storage: <Svg><rect x="4" y="4" width="16" height="6" rx="1.5" /><rect x="4" y="14" width="16" height="6" rx="1.5" /><path d="M8 7h.01M8 17h.01M12 7h4M12 17h4" /></Svg>,
   api: <Svg><path d="m8 8-4 4 4 4M16 8l4 4-4 4" /><path d="m13.5 5-3 14" /></Svg>,
   query: <Svg><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></Svg>,
   parser: <Svg><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="m10 12-2 2 2 2M14 12l2 2-2 2" /></Svg>,
@@ -26,6 +27,9 @@ export const icons = {
   embedding: <Svg><circle cx="6" cy="18" r="1.6" /><path d="M6 18 18 6M18 6h-5M18 6v5" /><path d="M6 18l5-1.5" /></Svg>,
   rerank: <Svg><path d="M7 4v16M4 17l3 3 3-3" /><path d="M13 6h7M13 11h5M13 16h3" /></Svg>,
   store: <Svg><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" /><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" /></Svg>,
+  users: <Svg><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><circle cx="17" cy="9" r="2.4" /><path d="M15.5 14.2A4.5 4.5 0 0 1 20.5 19" /></Svg>,
+  user: <Svg><circle cx="12" cy="8.5" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></Svg>,
+  logout: <Svg><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M10 16l-4-4 4-4M6 12h10" /></Svg>,
   collapse: <Svg size={16}><path d="m15 6-6 6 6 6" /></Svg>,
   expand: <Svg size={16}><path d="m9 6 6 6-6 6" /></Svg>,
 }
