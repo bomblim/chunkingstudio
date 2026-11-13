@@ -148,7 +148,7 @@ LLM API 키와 Parser 인증값은 DB에 저장하지 않고, 모델·Parser에 
 | 5. 질의 | `POST /api/indexes/{id}/query` `{query, top_k, principals?, rerank_model_id?}` |
 | 화면 업로드 + 파싱 (Studio 유입) | `POST /api/test-parse` (파일 + `parser_ids`) → `GET /api/parse-jobs?ids=` |
 
-curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
+모든 ID는 UUID 문자열입니다(JSON에서는 따옴표로 감싸고, Milvus 필터도 `run_id == "…"` 형식). curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
 
 ## 문서
 

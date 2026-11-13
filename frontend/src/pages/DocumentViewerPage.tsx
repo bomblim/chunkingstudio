@@ -10,7 +10,7 @@ import type { DocElement } from '../types'
 type Tab = 'compare' | 'tree' | 'quality' | 'raw'
 
 export default function DocumentViewerPage() {
-  const id = Number(useParams().id)
+  const id = useParams().id ?? ''
   const doc = useAsync(() => api.document(id), [id])
   const [tab, setTab] = useState<Tab>('compare')
   const d = doc.data

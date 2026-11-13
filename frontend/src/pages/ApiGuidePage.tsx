@@ -92,10 +92,15 @@ wait_done() {  # 사용: wait_done <조회 URL>
         </div>
         <CodeBlock code={`BASE=${B}
 
-# 필요한 ID 확인
+# 필요한 ID 확인 — 모든 ID는 UUID 문자열입니다
 curl -s "$BASE/api/parsers"           | jq '.[] | {id, name, enabled}'      # parser_id
 curl -s "$BASE/api/projects"          | jq '.projects[] | {id, path}'      # project_id
-curl -s "$BASE/api/embedding-models?usable_only=true" | jq '.[] | {id, name}'  # embedding_model_id`} />
+curl -s "$BASE/api/embedding-models?usable_only=true" | jq '.[] | {id, name}'  # embedding_model_id
+
+# 아래 예시에서 쓸 값 (위 결과의 id로 바꾸세요)
+PARSER_ID=0193a8c2-0000-7000-8000-000000000001
+PROJECT_ID=0193a8c2-0000-7000-8000-000000000002
+EMB_ID=0193a8c2-0000-7000-8000-000000000003`} />
         <CodeBlock label="bash — 상태 조회 도우미 (아래 예시에서 사용)" code={pollFn} />
       </div>
 
@@ -107,7 +112,7 @@ curl -s "$BASE/api/embedding-models?usable_only=true" | jq '.[] | {id, name}'  #
         <Fields rows={[['file', '필수', 'multipart 파일 (PDF·이미지·MD 등, 파서가 지원하는 형식)']]} />
         <CodeBlock code={`FILE_ID=$(curl -s -X POST "$BASE/api/files" -F "file=@./사내규정.pdf" | jq -r .id)
 echo "file_id=$FILE_ID"`} />
-        <CodeBlock label="응답 (201)" code={`{"id": 12, "file_name": "사내규정.pdf", "file_hash": "9148e9ae…", "size": 482133,
+        <CodeBlock label="응답 (201)" code={`{"id": "0193a8c2-7f4e-7b21-9a3d-5c2e8f1b4d70", "file_name": "사내규정.pdf", "file_hash": "9148e9ae…", "size": 482133,
  "content_type": "application/pdf", "created_at": "…", "updated_at": "…"}`} />
         <Endpoint method="GET" path="/api/files/{file_id}" />
       </div>
@@ -125,21 +130,22 @@ echo "file_id=$FILE_ID"`} />
           ['params', '선택', '파서 파라미터 (JSON 객체)'],
         ]} />
         <CodeBlock code={`JOB_ID=$(curl -s -X POST "$BASE/api/parse-jobs" -H "Content-Type: application/json" \\
-  -d "{\\"file_id\\": $FILE_ID, \\"parser_id\\": 2, \\"project_id\\": 1}" | jq -r .id)
+  -d "{\\"file_id\\": \\"$FILE_ID\\", \\"parser_id\\": \\"$PARSER_ID\\", \\"project_id\\": \\"$PROJECT_ID\\"}" | jq -r .id)
 
 # 상태 조회 → document_id
 DOC_ID=$(wait_done "$BASE/api/parse-jobs/$JOB_ID" | jq -r .document_id)
 echo "document_id=$DOC_ID"`} />
         <Endpoint method="GET" path="/api/parse-jobs/{job_id}" />
         <Status flow="queued → parsing → converting → done | failed" done={'document_id'} failed={'error_kind(parser_error · timeout · adapter_error), error'} />
-        <CodeBlock label="응답 예 (상태 조회)" code={`{"id": 5, "status": "done", "document_id": 7, "parser_id": 2, "parser_name": "upstage-parser",
- "file_name": "사내규정.pdf", "elapsed_ms": 9875, "error_kind": "", "error": "", "project_id": 1, …}`} />
+        <CodeBlock label="응답 예 (상태 조회)" code={`{"id": "0193a8c3-…", "status": "done", "document_id": "0193a8c3-…", "parser_id": "0193a8c2-…",
+ "parser_name": "upstage-parser", "file_name": "사내규정.pdf", "elapsed_ms": 9875, "error_kind": "", "error": "",
+ "project_id": "0193a8c2-…", …}`} />
         <details>
           <summary className="small">이미 파싱된 결과(JSON)가 있다면 — 파서 결과 바로 넣기 (동기)</summary>
           <Endpoint method="POST" path="/api/ingest" />
           <p className="small muted">파서가 만든 결과를 그대로 보내면 해당 파서의 어댑터로 표준 스키마로 바꿔 바로 문서를 만듭니다(응답의 <code>id</code>가 document_id).</p>
           <CodeBlock code={`curl -s -X POST "$BASE/api/ingest" -H "Content-Type: application/json" \\
-  -d '{"parser_id": 2, "title": "사내규정.pdf", "project_id": 1, "payload": { …파서 결과… }}' | jq '{id, title}'`} />
+  -d "{\\"parser_id\\": \\"$PARSER_ID\\", \\"title\\": \\"사내규정.pdf\\", \\"project_id\\": \\"$PROJECT_ID\\", \\"payload\\": $(cat parsed.json)}" | jq '{id, title}'`} />
         </details>
       </div>
 
@@ -155,7 +161,7 @@ echo "document_id=$DOC_ID"`} />
           ['settings', '선택', '청킹 설정 덮어쓰기 (예: {"max_tokens": 512})'],
         ]} />
         <CodeBlock code={`RUN_ID=$(curl -s -X POST "$BASE/api/runs" -H "Content-Type: application/json" \\
-  -d "{\\"document_id\\": $DOC_ID}" | jq -r .id)
+  -d "{\\"document_id\\": \\"$DOC_ID\\"}" | jq -r .id)
 
 wait_done "$BASE/api/runs/$RUN_ID" | jq '{status, totals, error}'`} />
         <Endpoint method="GET" path="/api/runs/{run_id}" />
@@ -163,7 +169,7 @@ wait_done "$BASE/api/runs/$RUN_ID" | jq '{status, totals, error}'`} />
         <details>
           <summary className="small">프로젝트 문서 전체를 한 번에 — 일괄 청킹</summary>
           <Endpoint method="POST" path="/api/projects/{project_id}/run-all" async />
-          <CodeBlock code={`curl -s -X POST "$BASE/api/projects/1/run-all" -H "Content-Type: application/json" \\
+          <CodeBlock code={`curl -s -X POST "$BASE/api/projects/$PROJECT_ID/run-all" -H "Content-Type: application/json" \\
   -d '{"include_descendants": true, "only_without_run": false}' | jq '{run_ids, document_count}'
 # 각 run_id를 GET /api/runs/{run_id} 로 조회`} />
         </details>
@@ -181,7 +187,7 @@ wait_done "$BASE/api/runs/$RUN_ID" | jq '{status, totals, error}'`} />
           ['metric', '선택', 'COSINE(기본) · IP · L2 — 컬렉션을 새로 만들 때만 적용'],
         ]} />
         <CodeBlock code={`INDEX_ID=$(curl -s -X POST "$BASE/api/indexes" -H "Content-Type: application/json" \\
-  -d "{\\"run_id\\": $RUN_ID, \\"embedding_model_id\\": 1}" | jq -r .id)
+  -d "{\\"run_id\\": \\"$RUN_ID\\", \\"embedding_model_id\\": \\"$EMB_ID\\"}" | jq -r .id)
 
 wait_done "$BASE/api/indexes/$INDEX_ID" | jq '{status, store_name, collection, chunk_count, error}'`} />
         <Endpoint method="GET" path="/api/indexes/{index_id}" />
@@ -190,8 +196,8 @@ wait_done "$BASE/api/indexes/$INDEX_ID" | jq '{status, store_name, collection, c
         <details>
           <summary className="small">프로젝트 문서 전체를 한 번에 — 일괄 적재 (문서마다 최근 성공한 청킹)</summary>
           <Endpoint method="POST" path="/api/projects/{project_id}/index-all" async />
-          <CodeBlock code={`curl -s -X POST "$BASE/api/projects/1/index-all" -H "Content-Type: application/json" \\
-  -d '{"embedding_model_id": 1, "mode": "append"}' | jq '{indexes: [.indexes[] | {id, collection}], document_count, skipped}'
+          <CodeBlock code={`curl -s -X POST "$BASE/api/projects/$PROJECT_ID/index-all" -H "Content-Type: application/json" \\
+  -d "{\\"embedding_model_id\\": \\"$EMB_ID\\", \\"mode\\": \\"append\\"}" | jq '{indexes: [.indexes[] | {id, collection}], document_count, skipped}'
 # 각 인덱스 id를 GET /api/indexes/{id} 로 조회 (stats.batch에 문서별 진행·실패 내역)`} />
         </details>
       </div>
@@ -204,7 +210,7 @@ wait_done "$BASE/api/indexes/$INDEX_ID" | jq '{status, store_name, collection, c
         <Fields rows={[
           ['query', '필수', '질의 문장'],
           ['top_k', '선택', '돌려받을 청크 수 (기본 5, 최대 100)'],
-          ['filter', '선택', 'Milvus 필터식 (예: document_id in [7, 8] · metadata["doc_type"] == "사내 규정")'],
+          ['filter', '선택', 'Milvus 필터식 (예: document_id == "0193a8c3-…" · metadata["doc_type"] == "사내 규정")'],
           ['principals', '선택', '사용자 권한 주체 목록. 주면 공개 청크와 이 주체가 허용된 청크만 검색 ([]: 공개만, 생략: 필터 없음)'],
           ['rerank_model_id', '선택', '리랭크 모델 ID. 주면 벡터 후보를 다시 점수 매겨 top_k만 반환'],
           ['rerank_candidates', '선택', '리랭크할 후보 수 (기본 top_k×4, 최소 20, 최대 200)'],
@@ -215,13 +221,13 @@ wait_done "$BASE/api/indexes/$INDEX_ID" | jq '{status, store_name, collection, c
 
 # 리랭크 적용
 curl -s -X POST "$BASE/api/indexes/$INDEX_ID/query" -H "Content-Type: application/json" \\
-  -d '{"query": "출장비 승인 절차", "top_k": 5, "rerank_model_id": 1, "rerank_candidates": 40}' \\
+  -d '{"query": "출장비 승인 절차", "top_k": 5, "rerank_model_id": "<리랭크 모델 ID>", "rerank_candidates": 40}' \\
   | jq '.hits[] | {rerank_score, score, vector_rank, title}'`} />
         <CodeBlock label="응답 (200)" code={`{"query": "출장비 승인 절차", "embed_ms": 35, "search_ms": 12, "metric": "COSINE",
  "rerank": {"model_name": "bge-reranker-v2-m3", "candidates": 40, "latency_ms": 180} | null,
  "applied_filter": "metadata[\\"public\\"] == true or json_contains_any(...)", "warnings": [],
  "hits": [{"id": "…", "score": 0.81, "vector_rank": 1, "rerank_score": 0.93,
-           "chunk_id": "C3", "run_id": 12, "document_id": 7, "title": "…", "section_path": "…",
+           "chunk_id": "C3", "run_id": "0193a8c3-…", "document_id": "0193a8c3-…", "title": "…", "section_path": "…",
            "text": "청크 원문", "metadata": {"document_title": "…", "pages": [2], "permissions": [...], …}}]}`} />
         <p className="small muted" style={{ margin: 0 }}>전체 API 목록: <a href={`${B}/docs`} target="_blank" rel="noreferrer">{B}/docs</a> (인터넷 연결 필요) · 스펙: <code>{B}/openapi.json</code></p>
       </div>

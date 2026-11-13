@@ -46,7 +46,7 @@ def ingest_payload(
     file_hash: str = "",
     source_file_path: str = "",
     doc_type: str = "",
-    project_id: int | None = None,
+    project_id: str | None = None,
 ) -> Document:
     """Parser 출력 → 어댑터 → 표준 스키마 검증 → 저장. 실패 시 격리 후 AdapterError."""
     adapter = parser.adapter if parser else "standard"
@@ -73,7 +73,7 @@ def save_document(
     file_hash: str = "",
     source_file_path: str = "",
     doc_type: str = "",
-    project_id: int | None = None,
+    project_id: str | None = None,
 ) -> Document:
     file_hash = file_hash or doc.file_hash or sha256(doc.model_dump_json().encode())
     doc.file_hash = file_hash
@@ -106,7 +106,7 @@ def save_document(
 
 
 # ------------------------------------------------------------------ 파싱 작업 (Parser API 직접 호출)
-def execute_parse_job(job_id: int, file_path: str, params: dict[str, Any], doc_type: str = "",
+def execute_parse_job(job_id: str, file_path: str, params: dict[str, Any], doc_type: str = "",
                       source: str = "test") -> None:
     """source: test(Studio 화면에서 업로드) | runtime(API로 유입)"""
     db = SessionLocal()
@@ -156,7 +156,7 @@ def execute_parse_job(job_id: int, file_path: str, params: dict[str, Any], doc_t
 
 
 # ------------------------------------------------------------------ 청킹 실행
-def execute_run(run_id: int) -> None:
+def execute_run(run_id: str) -> None:
     db = SessionLocal()
     try:
         run = db.get(ChunkRun, run_id)

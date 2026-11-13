@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS: Partial<ChunkSettings> = { max_tokens: 512, min_tokens: 
 /** 프로젝트 생성/수정. 프로파일 필드는 비워 두면(상속) 상위 프로젝트 값을 쓴다. */
 export function ProjectSettingsModal({ project, parentId, projects, onClose, onSaved }: {
   project?: Project
-  parentId?: number | null
+  parentId?: string | null
   projects: Project[]
   onClose: () => void
   onSaved: (p: Project) => void
@@ -55,7 +55,7 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
       <div className="grid-3">
         <label className="field">이름<input value={d.name} onChange={(e) => set('name', e.target.value)} autoFocus placeholder="예: 방산규정집" /></label>
         <label className="field">상위 프로젝트
-          <select value={d.parent_id ?? ''} onChange={(e) => set('parent_id', e.target.value ? Number(e.target.value) : null)}>
+          <select value={d.parent_id ?? ''} onChange={(e) => set('parent_id', e.target.value ? e.target.value : null)}>
             <option value="">(최상위)</option>
             {projectOptions(projects, exclude).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
@@ -90,21 +90,21 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
           {!d.method && inh('method', inherited?.method === 'llm' ? 'LLM 시멘틱' : inherited?.method === 'rule_structure' ? '규칙 baseline' : null)}
         </label>
         <label className="field">LLM 모델
-          <select value={d.model_id ?? ''} onChange={(e) => set('model_id', e.target.value ? Number(e.target.value) : null)}>
+          <select value={d.model_id ?? ''} onChange={(e) => set('model_id', e.target.value ? e.target.value : null)}>
             <option value="">상속</option>
             {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}{m.enabled ? '' : ' (비활성)'}</option>)}
           </select>
           {!d.model_id && inh('model_id', inherited?.model_name)}
         </label>
         <label className="field">프롬프트
-          <select value={d.prompt_id ?? ''} onChange={(e) => setD((x) => ({ ...x, prompt_id: e.target.value ? Number(e.target.value) : null, prompt_version_id: null }))}>
+          <select value={d.prompt_id ?? ''} onChange={(e) => setD((x) => ({ ...x, prompt_id: e.target.value ? e.target.value : null, prompt_version_id: null }))}>
             <option value="">상속</option>
             {prompts.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {!d.prompt_id && inh('prompt_id', inherited?.resolved_prompt_label)}
         </label>
         <label className="field">프롬프트 버전
-          <select value={d.prompt_version_id ?? ''} disabled={!d.prompt_id} onChange={(e) => set('prompt_version_id', e.target.value ? Number(e.target.value) : null)}>
+          <select value={d.prompt_version_id ?? ''} disabled={!d.prompt_id} onChange={(e) => set('prompt_version_id', e.target.value ? e.target.value : null)}>
             <option value="">운영(production) 버전 자동, 없으면 최신</option>
             {prompt?.versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status} 고정</option>)}
           </select>
@@ -113,7 +113,7 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
           <input value={d.doc_type ?? ''} onChange={(e) => set('doc_type', e.target.value || null)} placeholder={inherited?.doc_type ? `상속: ${inherited.doc_type}` : '비우면 상속'} />
         </label>
         <label className="field">적재 컬렉션 (벡터 저장소)
-          <select value={d.vector_collection_id ?? ''} onChange={(e) => set('vector_collection_id', e.target.value ? Number(e.target.value) : null)}>
+          <select value={d.vector_collection_id ?? ''} onChange={(e) => set('vector_collection_id', e.target.value ? e.target.value : null)}>
             <option value="">{parent ? '상속' : '기본 컬렉션 사용'}</option>
             {stores.data?.filter((s) => s.collections.length).map((s) => (
               <optgroup key={s.id} label={`${s.name}${s.enabled ? '' : ' (비활성)'}`}>

@@ -22,8 +22,8 @@ const TEMPLATES = [
 
 export default function RerankModelsPage() {
   const models = useAsync(() => vapi.rerankModels(), [])
-  const [edit, setEdit] = useState<{ id?: number; data: RerankModelInput } | null>(null)
-  const [busy, setBusy] = useState<number>()
+  const [edit, setEdit] = useState<{ id?: string; data: RerankModelInput } | null>(null)
+  const [busy, setBusy] = useState<string>()
   const [error, setError] = useState('')
 
   const remove = async (m: RerankModel) => {
@@ -90,7 +90,7 @@ function strip(m: RerankModel): RerankModelInput {
   return rest
 }
 
-function RerankForm({ initial, id, onClose, onSaved }: { initial: RerankModelInput; id?: number; onClose: () => void; onSaved: () => void }) {
+function RerankForm({ initial, id, onClose, onSaved }: { initial: RerankModelInput; id?: string; onClose: () => void; onSaved: () => void }) {
   const [d, setD] = useState<RerankModelInput>(initial)
   const [extra, setExtra] = useState(JSON.stringify(initial.extra_params, null, 2))
   const [error, setError] = useState('')

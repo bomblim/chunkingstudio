@@ -47,18 +47,18 @@ export interface DocStats {
 }
 
 export interface DocumentSummary {
-  id: number
+  id: string
   title: string
-  parser_id: number | null
+  parser_id: string | null
   parser_name: string
   parser_version: string
   file_hash: string
   source: 'runtime' | 'test'
   doc_type: string
   revision: number
-  project_id: number | null
+  project_id: string | null
   project_path?: string[]
-  last_run?: { id: number; status: string; method: string; chunk_count: number | null; ok: boolean | null; created_at: string }
+  last_run?: { id: string; status: string; method: string; chunk_count: number | null; ok: boolean | null; created_at: string }
   stats: DocStats
   created_at: string
 }
@@ -68,11 +68,11 @@ export interface DocumentDetail extends DocumentSummary {
   has_source_file: boolean
   source_kind: 'pdf' | 'image' | ''
   source_file_path: string
-  revisions: { id: number; revision: number; created_at: string }[]
+  revisions: { id: string; revision: number; created_at: string }[]
 }
 
 export interface Parser {
-  id: number
+  id: string
   name: string
   description: string
   version: string
@@ -97,20 +97,20 @@ export interface Parser {
 }
 
 export interface ParseJob {
-  id: number
-  parser_id: number
+  id: string
+  parser_id: string
   parser_name?: string
   file_name: string
   status: 'queued' | 'parsing' | 'converting' | 'done' | 'failed'
   error_kind: string
   error: string
   elapsed_ms: number
-  document_id: number | null
+  document_id: string | null
   created_at: string
 }
 
 export interface LLMModel {
-  id: number
+  id: string
   name: string
   provider: 'openai_compatible' | 'anthropic' | 'mock'
   engine: string
@@ -131,8 +131,8 @@ export interface LLMModel {
 }
 
 export interface PromptVersion {
-  id: number
-  prompt_id: number
+  id: string
+  prompt_id: string
   version: number
   system_template: string
   user_template: string
@@ -144,14 +144,14 @@ export interface PromptVersion {
 }
 
 export interface Prompt {
-  id: number
+  id: string
   name: string
   description: string
   doc_types: string[]
-  forked_from_version_id: number | null
+  forked_from_version_id: string | null
   versions: PromptVersion[]
   latest_version: number | null
-  production_version_id: number | null
+  production_version_id: string | null
 }
 
 export interface ChunkSettings {
@@ -223,10 +223,10 @@ export interface WindowLog {
 }
 
 export interface RunSummary {
-  id: number
-  document_id: number
-  prompt_version_id: number | null
-  model_id: number | null
+  id: string
+  document_id: string
+  prompt_version_id: string | null
+  model_id: string | null
   method: 'llm' | 'rule_structure'
   status: 'queued' | 'running' | 'done' | 'failed'
   progress: { phase?: string; window?: number; estimated_windows?: number; elements_done?: number; elements_total?: number }
@@ -241,7 +241,7 @@ export interface RunSummary {
   error: string
   model_name: string
   prompt_label: string
-  prompt_id: number | null
+  prompt_id: string | null
   created_at: string
 }
 
@@ -264,7 +264,7 @@ export interface PromptPreview {
 }
 
 export interface EmbeddingModel {
-  id: number
+  id: string
   name: string
   provider: 'openai_compatible' | 'mock'
   engine: string
@@ -285,7 +285,7 @@ export interface EmbeddingModel {
 
 /** 벡터 검색 후보를 다시 점수 매기는 리랭크 모델 */
 export interface RerankModel {
-  id: number
+  id: string
   name: string
   provider: 'tei' | 'cohere_compatible' | 'nvidia_nim' | 'mock'
   engine: string
@@ -303,7 +303,7 @@ export interface RerankModel {
 }
 
 export interface VectorStore {
-  id: number
+  id: string
   name: string
   kind: 'milvus' | 'memory'
   uri: string
@@ -319,8 +319,8 @@ export interface VectorStore {
 
 /** 벡터 저장소(연결) 아래의 적재 컬렉션 */
 export interface VectorCollection {
-  id: number
-  store_id: number
+  id: string
+  store_id: string
   name: string
   description: string
   /** 미분류 문서·컬렉션을 지정하지 않은 프로젝트가 쓰는 기본 컬렉션(전체에서 하나) */
@@ -332,35 +332,35 @@ export interface VectorCollection {
 }
 
 /** 적재 대상: id/name/kind/enabled는 연결(저장소), collection*은 컬렉션 */
-export interface StoreBrief { id: number; name: string; kind: 'milvus' | 'memory'; enabled: boolean; collection_id: number; collection: string; is_default: boolean }
-export interface StoreSource { kind: 'project' | 'default'; project_id: number | null; project_name: string | null; reason?: string }
+export interface StoreBrief { id: string; name: string; kind: 'milvus' | 'memory'; enabled: boolean; collection_id: string; collection: string; is_default: boolean }
+export interface StoreSource { kind: 'project' | 'default'; project_id: string | null; project_name: string | null; reason?: string }
 export interface ExistingIndexBrief {
-  id: number; status: string; chunk_count: number; embedding_model_id: number; embedding_model_name: string
-  embed_template: string; metric: string; document_ids: number[]
+  id: string; status: string; chunk_count: number; embedding_model_id: string; embedding_model_name: string
+  embed_template: string; metric: string; document_ids: string[]
 }
 /** 문서·프로젝트의 적재 대상 */
 export interface IndexTarget { store: StoreBrief | null; source: StoreSource; existing_index: ExistingIndexBrief | null }
 
 export interface VectorIndex {
-  id: number
+  id: string
   name: string
-  store_id: number
+  store_id: string
   store_name: string
   store_kind: string
   collection: string
-  embedding_model_id: number
+  embedding_model_id: string
   embedding_model_name: string
   embed_template: string
   metric: string
   dimension: number | null
-  run_ids: number[]
+  run_ids: string[]
   status: 'queued' | 'running' | 'done' | 'failed'
   progress: { phase?: string; done?: number; total?: number }
   chunk_count: number
   warnings: string[]
   stats: {
-    last_run_id?: number; inserted?: number; embed_ms?: number; insert_ms?: number; embed_tokens?: number | null
-    batch?: { total: number; done: number; succeeded: number; failed: { document_id: number; title: string; error: string }[]; current: string | null }
+    last_run_id?: string; inserted?: number; embed_ms?: number; insert_ms?: number; embed_tokens?: number | null
+    batch?: { total: number; done: number; succeeded: number; failed: { document_id: string; title: string; error: string }[]; current: string | null }
   }
   error: string
   created_at: string
@@ -375,8 +375,8 @@ export interface SearchHit {
   /** 리랭크 점수 (리랭크를 쓴 질의만) */
   rerank_score?: number
   chunk_id: string
-  run_id: number
-  document_id: number
+  run_id: string
+  document_id: string
   title: string
   section_path: string
   text: string
@@ -384,7 +384,7 @@ export interface SearchHit {
   metadata: {
     document_title?: string; element_ids?: string[]; pages?: number[]; tokens?: number; summary?: string
     keywords?: string[]; prompt_version?: number | null; llm_model?: string | null; method?: string; text_truncated?: boolean
-    project_id?: number | null; project_path?: string[]; project_meta?: Record<string, unknown>; permissions?: string[]; public?: boolean
+    project_id?: string | null; project_path?: string[]; project_meta?: Record<string, unknown>; permissions?: string[]; public?: boolean
   }
 }
 
@@ -396,7 +396,7 @@ export interface QueryResult {
   warnings: string[]
   principals: string[] | null
   applied_filter: string | null
-  rerank: { model_id: number; model_name: string; candidates: number; latency_ms: number } | null
+  rerank: { model_id: string; model_name: string; candidates: number; latency_ms: number } | null
   hits: SearchHit[]
 }
 
@@ -412,44 +412,44 @@ export interface UpstageConfig {
 
 export interface ProjectProfile {
   method: 'llm' | 'rule_structure' | null
-  prompt_id: number | null
-  prompt_version_id: number | null
-  model_id: number | null
+  prompt_id: string | null
+  prompt_version_id: string | null
+  model_id: string | null
   params: Record<string, unknown> | null
   settings: Partial<ChunkSettings> | null
   doc_type: string | null
-  vector_collection_id: number | null
+  vector_collection_id: string | null
 }
 
 export type ProjectMeta = Record<string, string | number | boolean | null | (string | number | boolean)[]>
 
 export interface ProjectAccess {
   meta: ProjectMeta
-  meta_sources: Record<string, number>
+  meta_sources: Record<string, string>
   meta_source_names: Record<string, string>
   permissions: string[]
-  permission_sources: Record<string, number>
+  permission_sources: Record<string, string>
   permission_source_names: Record<string, string>
   public: boolean
 }
 
 export interface Project extends ProjectProfile {
-  id: number
+  id: string
   name: string
   description: string
   meta: ProjectMeta | null
   permissions: string[] | null
   permission_mode: 'inherit' | 'override' | null
   access: ProjectAccess
-  parent_id: number | null
+  parent_id: string | null
   sort_order: number
   path: string[]
   doc_count: number
   total_doc_count: number
   effective: ProjectProfile & {
-    sources: Record<string, number>
+    sources: Record<string, string>
     source_names: Record<string, string>
-    resolved_prompt_version_id: number | null
+    resolved_prompt_version_id: string | null
     resolved_prompt_label: string | null
     model_name: string | null
     vector_store: StoreBrief | null
@@ -465,8 +465,8 @@ export interface ProjectTree {
 
 /** 프로젝트 일괄 적재 계획: 문서마다 가장 최근에 성공한 청킹 실행 */
 export interface IndexPlan {
-  items: { document_id: number; title: string; run_id: number; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string; collection_id: number; store_source: 'project' | 'default' }[]
+  items: { document_id: string; title: string; run_id: string; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string; collection_id: string; store_source: 'project' | 'default' }[]
   /** 저장소(컬렉션)별 묶음 */
   groups: { store: StoreBrief; document_count: number; chunk_count: number; via_default: boolean; existing_index: ExistingIndexBrief | null; others_in_collection: number; other_titles: string[] }[]
-  skipped: { document_id: number; title: string; reason: string }[]
+  skipped: { document_id: string; title: string; reason: string }[]
 }

@@ -27,17 +27,17 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 class ProjectIn(BaseModel):
     name: str
     description: str = ""
-    parent_id: int | None = None
+    parent_id: str | None = None
     sort_order: int = 0
     # 청킹 프로파일: None이면 상위 프로젝트에서 상속
     method: str | None = None
-    prompt_id: int | None = None
-    prompt_version_id: int | None = None
-    model_id: int | None = None
+    prompt_id: str | None = None
+    prompt_version_id: str | None = None
+    model_id: str | None = None
     params: dict[str, Any] | None = None
     settings: dict[str, Any] | None = None
     doc_type: str | None = None
-    vector_collection_id: int | None = None  # 적재할 컬렉션. None이면 상위 상속, 없으면 기본 컬렉션
+    vector_collection_id: str | None = None  # 적재할 컬렉션. None이면 상위 상속, 없으면 기본 컬렉션
     # 메타데이터·권한
     meta: dict[str, Any] | None = None
     permissions: list[str] | None = None
@@ -49,7 +49,7 @@ class RunAllIn(BaseModel):
     only_without_run: bool = False  # 완료된 실행이 없는 문서만
 
 
-def _validate(db: Session, body: ProjectIn, project_id: int | None = None) -> None:
+def _validate(db: Session, body: ProjectIn, project_id: str | None = None) -> None:
     if not body.name.strip():
         raise HTTPException(400, "프로젝트 이름을 입력하세요")
     if body.method not in (None, "llm", "rule_structure"):
@@ -83,7 +83,7 @@ def _validate(db: Session, body: ProjectIn, project_id: int | None = None) -> No
         raise HTTPException(400, str(exc)) from exc
 
 
-def _describe(db: Session, tree: dict[int, Project], p: Project, counts: dict[int | None, int]) -> dict[str, Any]:
+def _describe(db: Session, tree: dict[str, Project], p: Project, counts: dict[str | None, int]) -> dict[str, Any]:
     d = row_dict(p)
     d["path"] = path_names(tree, p.id)
     d["doc_count"] = counts.get(p.id, 0)
@@ -106,7 +106,7 @@ def _describe(db: Session, tree: dict[int, Project], p: Project, counts: dict[in
     return d
 
 
-def _doc_counts(db: Session) -> dict[int | None, int]:
+def _doc_counts(db: Session) -> dict[str | None, int]:
     return dict(db.execute(select(Document.project_id, func.count()).group_by(Document.project_id)).all())
 
 
@@ -129,13 +129,13 @@ def create_project(body: ProjectIn, db: Session = Depends(get_db)) -> dict[str, 
 
 
 @router.get("/{project_id}")
-def get_project(project_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_project(project_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     p = get_or_404(db, Project, project_id)
     return _describe(db, load_tree(db), p, _doc_counts(db))
 
 
 @router.put("/{project_id}")
-def update_project(project_id: int, body: ProjectIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_project(project_id: str, body: ProjectIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     p = get_or_404(db, Project, project_id)
     _validate(db, body, project_id)
     for k, v in body.model_dump().items():
@@ -145,7 +145,7 @@ def update_project(project_id: int, body: ProjectIn, db: Session = Depends(get_d
 
 
 @router.delete("/{project_id}", status_code=204)
-def delete_project(project_id: int, move_to_parent: bool = False, db: Session = Depends(get_db)) -> None:
+def delete_project(project_id: str, move_to_parent: bool = False, db: Session = Depends(get_db)) -> None:
     """하위 프로젝트나 문서가 있으면 move_to_parent=true일 때만 삭제(상위로 옮김). 문서는 삭제하지 않는다."""
     p = get_or_404(db, Project, project_id)
     children = list(db.scalars(select(Project).where(Project.parent_id == p.id)))
@@ -161,7 +161,7 @@ def delete_project(project_id: int, move_to_parent: bool = False, db: Session = 
 
 
 @router.post("/{project_id}/run-all", status_code=202)
-def run_all(project_id: int, body: RunAllIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
+def run_all(project_id: str, body: RunAllIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
     """프로젝트의 청킹 프로파일로 소속 문서를 일괄 청킹한다(순차 실행)."""
     p = get_or_404(db, Project, project_id)
     tree = load_tree(db)
@@ -183,7 +183,7 @@ def run_all(project_id: int, body: RunAllIn, background: BackgroundTasks, db: Se
             "prompt_version_id": prof["prompt_version_id"], "model_id": prof["model_id"]}
 
 
-def _execute_sequential(run_ids: list[int]) -> None:
+def _execute_sequential(run_ids: list[str]) -> None:
     for rid in run_ids:  # LLM 서버 부하를 줄이기 위해 한 건씩
         execute_run(rid)
 
@@ -191,7 +191,7 @@ def _execute_sequential(run_ids: list[int]) -> None:
 # ------------------------------------------------------------------ 일괄 적재 (벡터 DB)
 class IndexAllIn(BaseModel):
     """적재 위치는 문서가 속한 프로젝트의 컬렉션으로 정해진다(없으면 기본 컬렉션)."""
-    embedding_model_id: int
+    embedding_model_id: str
     embed_template: str = "{text}"
     metric: str = "COSINE"
     mode: str = "append"  # append(같은 문서는 교체) | recreate(컬렉션을 비우고 다시 적재)
@@ -212,13 +212,13 @@ def _index_plan(db: Session, project: Project, include_descendants: bool) -> dic
         select(ChunkRun.id, ChunkRun.document_id, ChunkRun.status, ChunkRun.method, ChunkRun.totals, ChunkRun.created_at)
         .where(ChunkRun.document_id.in_([d.id for d in docs])).order_by(ChunkRun.id)
     ).all() if docs else []
-    latest_ok: dict[int, Any] = {}
-    latest_any: dict[int, Any] = {}
+    latest_ok: dict[str, Any] = {}
+    latest_any: dict[str, Any] = {}
     for r in rows:
         latest_any[r.document_id] = r
         if r.status == "done" and (r.totals or {}).get("chunk_count"):
             latest_ok[r.document_id] = r
-    targets: dict[int, tuple[Any, dict[str, Any]]] = {}
+    targets: dict[str | None, tuple[Any, dict[str, Any]]] = {}
     items, skipped = [], []
     for d in docs:
         if d.project_id not in targets:
@@ -258,12 +258,12 @@ def _index_plan(db: Session, project: Project, include_descendants: bool) -> dic
 
 
 @router.get("/{project_id}/index-plan")
-def index_plan(project_id: int, include_descendants: bool = True, db: Session = Depends(get_db)) -> dict[str, Any]:
+def index_plan(project_id: str, include_descendants: bool = True, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _index_plan(db, get_or_404(db, Project, project_id), include_descendants)
 
 
 @router.post("/{project_id}/index-all", status_code=202)
-def index_all(project_id: int, body: IndexAllIn, background: BackgroundTasks,
+def index_all(project_id: str, body: IndexAllIn, background: BackgroundTasks,
               db: Session = Depends(get_db)) -> dict[str, Any]:
     """프로젝트 문서의 최근 성공 청킹 결과를 각 문서의 프로젝트 저장소(컬렉션)에 일괄 적재한다(순차, 문서 단위 교체)."""
     p = get_or_404(db, Project, project_id)
@@ -289,6 +289,6 @@ def index_all(project_id: int, body: IndexAllIn, background: BackgroundTasks,
             "skipped": plan["skipped"]}
 
 
-def _index_groups(jobs: list[tuple[int, list[dict[str, Any]]]], mode: str) -> None:
+def _index_groups(jobs: list[tuple[str, list[dict[str, Any]]]], mode: str) -> None:
     for index_id, items in jobs:  # 임베딩 서버 부하를 줄이기 위해 저장소 묶음도 차례로
         execute_index_batch(index_id, items, mode)

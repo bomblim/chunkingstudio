@@ -107,3 +107,9 @@ export function Histogram({ values, bins = 12 }: { values: number[]; bins?: numb
     </div>
   )
 }
+
+/** UUID를 짧게 표시: 뒤 8자리(앞부분은 시각이라 비슷함). 전체 값은 마우스를 올리면 보인다 */
+export const shortId = (id?: string | null) => (id ? `#${id.slice(-8)}` : '')
+export function Sid({ id }: { id?: string | null }) {
+  return <span className="mono" title={id ?? undefined}>{shortId(id)}</span>
+}

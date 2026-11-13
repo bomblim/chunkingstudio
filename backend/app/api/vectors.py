@@ -74,7 +74,7 @@ def create_embedding_model(body: EmbeddingModelIn, db: Session = Depends(get_db)
 
 
 @router.put("/embedding-models/{model_id}")
-def update_embedding_model(model_id: int, body: EmbeddingModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_embedding_model(model_id: str, body: EmbeddingModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     m = get_or_404(db, EmbeddingModel, model_id)
     for k, v in body.model_dump().items():
         setattr(m, k, v)
@@ -83,7 +83,7 @@ def update_embedding_model(model_id: int, body: EmbeddingModelIn, db: Session = 
 
 
 @router.post("/embedding-models/{model_id}/health")
-def embedding_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def embedding_health(model_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """연결 확인 + 차원 자동 감지."""
     m = get_or_404(db, EmbeddingModel, model_id)
     try:
@@ -121,7 +121,7 @@ def _rerank_out(m: RerankModel) -> dict[str, Any]:
     return d
 
 
-def _check_rerank_body(db: Session, body: RerankModelIn, model_id: int | None = None) -> None:
+def _check_rerank_body(db: Session, body: RerankModelIn, model_id: str | None = None) -> None:
     if body.provider not in RERANK_PROVIDERS:
         raise HTTPException(400, f"알 수 없는 provider: {body.provider} (가능: {', '.join(RERANK_PROVIDERS)})")
     if not body.name.strip():
@@ -156,7 +156,7 @@ def create_rerank_model(body: RerankModelIn, db: Session = Depends(get_db)) -> d
 
 
 @router.put("/rerank-models/{model_id}")
-def update_rerank_model(model_id: int, body: RerankModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_rerank_model(model_id: str, body: RerankModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     m = get_or_404(db, RerankModel, model_id)
     _check_rerank_body(db, body, model_id)
     for k, v in body.model_dump().items():
@@ -166,13 +166,13 @@ def update_rerank_model(model_id: int, body: RerankModelIn, db: Session = Depend
 
 
 @router.delete("/rerank-models/{model_id}", status_code=204)
-def delete_rerank_model(model_id: int, db: Session = Depends(get_db)) -> None:
+def delete_rerank_model(model_id: str, db: Session = Depends(get_db)) -> None:
     db.delete(get_or_404(db, RerankModel, model_id))
     db.commit()
 
 
 @router.post("/rerank-models/{model_id}/health")
-def rerank_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def rerank_health(model_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """연결 확인: 관련 문장이 무관한 문장보다 높은 점수를 받는지도 함께 본다."""
     m = get_or_404(db, RerankModel, model_id)
     query = "원격근무 시 보안 수칙"
@@ -224,7 +224,7 @@ def _store_out(db: Session, s: VectorStore) -> dict[str, Any]:
     return d
 
 
-def _check_store_body(db: Session, body: VectorStoreIn, store_id: int | None = None) -> None:
+def _check_store_body(db: Session, body: VectorStoreIn, store_id: str | None = None) -> None:
     if body.kind not in {"milvus", "memory"}:
         raise HTTPException(400, f"알 수 없는 저장소 종류: {body.kind}")
     if not body.name.strip():
@@ -249,7 +249,7 @@ def create_vector_store(body: VectorStoreIn, db: Session = Depends(get_db)) -> d
 
 
 @router.put("/vector-stores/{store_id}")
-def update_vector_store(store_id: int, body: VectorStoreIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_vector_store(store_id: str, body: VectorStoreIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     s = get_or_404(db, VectorStore, store_id)
     _check_store_body(db, body, store_id)
     if not body.enabled and any(c.is_default for c in s.collections):
@@ -260,7 +260,7 @@ def update_vector_store(store_id: int, body: VectorStoreIn, db: Session = Depend
     return _store_out(db, s)
 
 
-def _check_collection(db: Session, store: VectorStore, body: CollectionIn, collection_id: int | None = None) -> None:
+def _check_collection(db: Session, store: VectorStore, body: CollectionIn, collection_id: str | None = None) -> None:
     body.name = body.name.strip()
     if not body.name:
         raise HTTPException(400, "컬렉션 이름을 입력하세요")
@@ -291,7 +291,7 @@ def _apply_default(db: Session, c: VectorCollection, want_default: bool) -> None
 
 
 @router.post("/vector-stores/{store_id}/collections", status_code=201)
-def create_collection(store_id: int, body: CollectionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def create_collection(store_id: str, body: CollectionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     store = get_or_404(db, VectorStore, store_id)
     _check_collection(db, store, body)
     c = VectorCollection(store_id=store.id, name=body.name, description=body.description, is_default=False)
@@ -303,7 +303,7 @@ def create_collection(store_id: int, body: CollectionIn, db: Session = Depends(g
 
 
 @router.put("/vector-collections/{collection_id}")
-def update_collection(collection_id: int, body: CollectionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_collection(collection_id: str, body: CollectionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     c = get_or_404(db, VectorCollection, collection_id)
     _check_collection(db, c.store, body, c.id)
     c.name, c.description = body.name, body.description
@@ -313,7 +313,7 @@ def update_collection(collection_id: int, body: CollectionIn, db: Session = Depe
 
 
 @router.delete("/vector-collections/{collection_id}", status_code=204)
-def delete_collection(collection_id: int, db: Session = Depends(get_db)) -> None:
+def delete_collection(collection_id: str, db: Session = Depends(get_db)) -> None:
     """Studio 등록만 지운다(Milvus의 실제 컬렉션·데이터는 그대로)."""
     c = get_or_404(db, VectorCollection, collection_id)
     if c.is_default:
@@ -326,7 +326,7 @@ def delete_collection(collection_id: int, db: Session = Depends(get_db)) -> None
 
 
 @router.post("/vector-stores/{store_id}/health")
-def vector_store_health(store_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def vector_store_health(store_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     s = get_or_404(db, VectorStore, store_id)
     started = time.monotonic()
     try:
@@ -343,11 +343,11 @@ def vector_store_health(store_id: int, db: Session = Depends(get_db)) -> dict[st
 
 # ------------------------------------------------------------------ 인덱스 (적재)
 class IndexIn(BaseModel):
-    run_id: int
-    embedding_model_id: int
+    run_id: str
+    embedding_model_id: str
     # 비우면(기본) 문서가 속한 프로젝트의 저장소·컬렉션(없으면 기본 저장소)에 '추가'로 적재한다(같은 문서는 교체).
     # 직접 지정은 API 자동화·테스트용.
-    store_id: int | None = None
+    store_id: str | None = None
     collection: str | None = None
     name: str = ""
     embed_template: str = "{text}"
@@ -356,7 +356,7 @@ class IndexIn(BaseModel):
 
 
 class AppendIn(BaseModel):
-    run_id: int
+    run_id: str
 
 
 class QueryIn(BaseModel):
@@ -366,7 +366,7 @@ class QueryIn(BaseModel):
     # None: 권한 필터 미적용(관리자 보기) / []: 공개 청크만 / ["group:인사팀", ...]: 해당 주체가 볼 수 있는 청크만
     principals: list[str] | None = None
     # 리랭크: 모델을 주면 벡터 검색 후보(rerank_candidates개, 기본 top_k×4·최소 20)를 다시 점수 매겨 top_k만 반환
-    rerank_model_id: int | None = None
+    rerank_model_id: str | None = None
     rerank_candidates: int | None = None
 
 
@@ -380,7 +380,7 @@ def _index_out(db: Session, ix: VectorIndex) -> dict[str, Any]:
     return d
 
 
-def _check_run(db: Session, run_id: int) -> ChunkRun:
+def _check_run(db: Session, run_id: str) -> ChunkRun:
     run = get_or_404(db, ChunkRun, run_id)
     if run.status != "done" or not run.chunks:
         raise HTTPException(400, "완료되고 청크가 있는 청킹 실행만 적재할 수 있습니다")
@@ -399,11 +399,11 @@ def list_indexes(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 
 
 @router.get("/indexes/{index_id}")
-def get_index(index_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_index(index_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _index_out(db, get_or_404(db, VectorIndex, index_id))
 
 
-def prepare_index(db: Session, *, store_id: int, embedding_model_id: int, collection: str, name: str,
+def prepare_index(db: Session, *, store_id: str, embedding_model_id: str, collection: str, name: str,
                   embed_template: str, metric: str, mode: str) -> VectorIndex:
     """적재 대상 인덱스를 검증하고 준비한다(append면 같은 저장소·컬렉션의 기존 인덱스를 재사용). commit은 호출자가."""
     store = get_or_404(db, VectorStore, store_id)
@@ -441,7 +441,7 @@ def prepare_index(db: Session, *, store_id: int, embedding_model_id: int, collec
     return ix
 
 
-def _index_doc_ids(db: Session, ix: VectorIndex) -> list[int]:
+def _index_doc_ids(db: Session, ix: VectorIndex) -> list[str]:
     if not ix.run_ids:
         return []
     return sorted(set(db.scalars(select(ChunkRun.document_id).where(ChunkRun.id.in_(ix.run_ids)))))
@@ -462,7 +462,7 @@ def existing_index_brief(db: Session, coll: VectorCollection | None) -> dict[str
             "embed_template": ix.embed_template, "metric": ix.metric, "document_ids": _index_doc_ids(db, ix)}
 
 
-def target_for_project(db: Session, project_id: int | None, tree: dict | None = None) -> dict[str, Any]:
+def target_for_project(db: Session, project_id: str | None, tree: dict | None = None) -> dict[str, Any]:
     """프로젝트(또는 미분류)의 적재 대상: 연결·컬렉션·출처와 그 컬렉션의 기존 인덱스."""
     tree = tree if tree is not None else load_tree(db)
     coll, source = resolve_collection(db, tree, project_id)
@@ -470,7 +470,7 @@ def target_for_project(db: Session, project_id: int | None, tree: dict | None = 
 
 
 @router.get("/index-target")
-def index_target(document_id: int | None = None, project_id: int | None = None,
+def index_target(document_id: str | None = None, project_id: str | None = None,
                  db: Session = Depends(get_db)) -> dict[str, Any]:
     """문서(또는 프로젝트)를 적재할 저장소·컬렉션. 둘 다 없으면 미분류(기본 저장소)."""
     if document_id is not None:
@@ -501,7 +501,7 @@ def create_index(body: IndexIn, background: BackgroundTasks, db: Session = Depen
 
 
 @router.post("/indexes/{index_id}/append", status_code=202)
-def append_run(index_id: int, body: AppendIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
+def append_run(index_id: str, body: AppendIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
     ix = get_or_404(db, VectorIndex, index_id)
     run = _check_run(db, body.run_id)
     target = target_for_project(db, db.get(Document, run.document_id).project_id)
@@ -517,7 +517,7 @@ def append_run(index_id: int, body: AppendIn, background: BackgroundTasks, db: S
 
 
 @router.delete("/indexes/{index_id}", status_code=204)
-def delete_index(index_id: int, drop_collection: bool = False, db: Session = Depends(get_db)) -> None:
+def delete_index(index_id: str, drop_collection: bool = False, db: Session = Depends(get_db)) -> None:
     ix = get_or_404(db, VectorIndex, index_id)
     if drop_collection:
         try:
@@ -531,7 +531,7 @@ def delete_index(index_id: int, drop_collection: bool = False, db: Session = Dep
 
 
 @router.post("/indexes/{index_id}/query")
-def query(index_id: int, body: QueryIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def query(index_id: str, body: QueryIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     ix = get_or_404(db, VectorIndex, index_id)
     if ix.status != "done" and not ix.chunk_count:
         raise HTTPException(400, "적재가 끝난 인덱스만 질의할 수 있습니다")

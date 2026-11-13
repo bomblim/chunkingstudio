@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DEFAULT_EMBED_TEMPLATE, api, papi, vapi } from '../api'
 import { ProjectSettingsModal } from '../components/ProjectSettings'
-import { ProjectTreeView, projectOptions, type ProjectSelection } from '../components/ProjectTree'
-import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling } from '../components/ui'
+import { ProjectTreeView, projectOptions, type ProjectSelection, isProjectId } from '../components/ProjectTree'
+import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling, shortId } from '../components/ui'
 import type { ParseJob, Project, VectorIndex } from '../types'
 
 function parseSelection(v: string | null): ProjectSelection {
   if (v === 'unassigned') return 'unassigned'
-  const n = Number(v)
-  return n > 0 ? n : 'all'
+  return v ? v : 'all'
 }
 
 export default function DocumentsPage() {
@@ -17,23 +16,23 @@ export default function DocumentsPage() {
   const selection = parseSelection(sp.get('project'))
   const setSelection = (v: ProjectSelection) => setSp((p) => { const n = new URLSearchParams(p); if (v === 'all') n.delete('project'); else n.set('project', String(v)); return n }, { replace: true })
 
-  const [filters, setFilters] = useState<{ parser_id?: number; source?: string; q?: string }>({})
+  const [filters, setFilters] = useState<{ parser_id?: string; source?: string; q?: string }>({})
   const [q, setQ] = useState('')
   const tree = useAsync(() => papi.projects(), [])
   const docQuery = { ...filters, ...(selection === 'unassigned' ? { unassigned: true } : selection === 'all' ? {} : { project_id: selection }) }
   const docs = useAsync(() => api.documents(docQuery), [JSON.stringify(docQuery)])
   const parsers = useAsync(() => api.parsers(), [])
   const [showUpload, setShowUpload] = useState(false)
-  const [editing, setEditing] = useState<{ project?: Project; parentId?: number | null } | null>(null)
+  const [editing, setEditing] = useState<{ project?: Project; parentId?: string | null } | null>(null)
   const [indexing, setIndexing] = useState<Project | null>(null)
-  const [checked, setChecked] = useState<number[]>([])
+  const [checked, setChecked] = useState<string[]>([])
   const [moveTarget, setMoveTarget] = useState<string>('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const projects = tree.data?.projects ?? []
-  const current = typeof selection === 'number' ? projects.find((p) => p.id === selection) : undefined
+  const current = isProjectId(selection) ? projects.find((p) => p.id === selection) : undefined
   const currentProjectId = current?.id
   const reloadAll = () => { void tree.reload(); void docs.reload() }
   const running = docs.data?.some((d) => d.last_run && (d.last_run.status === 'queued' || d.last_run.status === 'running')) ?? false
@@ -46,7 +45,7 @@ export default function DocumentsPage() {
   }
 
   const moveChecked = () => act(async () => {
-    const target = moveTarget === 'none' ? null : Number(moveTarget)
+    const target = moveTarget === 'none' ? null : moveTarget
     const r = await papi.moveDocuments(checked, target)
     setNotice(`${r.moved}개 문서를 ${target ? projects.find((p) => p.id === target)?.path.join(' / ') : '미분류'}(으)로 옮겼습니다`)
     setChecked([])
@@ -158,7 +157,7 @@ export default function DocumentsPage() {
                 <input className="grow" placeholder="제목·본문 검색" value={q} onChange={(e) => setQ(e.target.value)} aria-label="검색어" />
                 <button type="submit">검색</button>
               </form>
-              <select aria-label="Parser 필터" value={filters.parser_id ?? ''} onChange={(e) => setFilters((f) => ({ ...f, parser_id: e.target.value ? Number(e.target.value) : undefined }))}>
+              <select aria-label="Parser 필터" value={filters.parser_id ?? ''} onChange={(e) => setFilters((f) => ({ ...f, parser_id: e.target.value ? e.target.value : undefined }))}>
                 <option value="">모든 Parser</option>
                 {parsers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -230,10 +229,10 @@ export default function DocumentsPage() {
   )
 }
 
-function ProjectSelect({ projects, value, onChange }: { projects: Project[]; value: number | ''; onChange: (v: number | '') => void }) {
+function ProjectSelect({ projects, value, onChange }: { projects: Project[]; value: string | ''; onChange: (v: string | '') => void }) {
   return (
     <label className="field">프로젝트
-      <select value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : '')}>
+      <select value={value} onChange={(e) => onChange(e.target.value ? e.target.value : '')}>
         <option value="">(미분류)</option>
         {projectOptions(projects).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </select>
@@ -242,13 +241,13 @@ function ProjectSelect({ projects, value, onChange }: { projects: Project[]; val
 }
 
 /** IN-02: 문서 업로드 → Parser API 직접 호출 → 결과 확인 */
-function UploadModal({ projects, defaultProjectId, onClose, onDone }: { projects: Project[]; defaultProjectId?: number; onClose: () => void; onDone: () => void }) {
+function UploadModal({ projects, defaultProjectId, onClose, onDone }: { projects: Project[]; defaultProjectId?: string; onClose: () => void; onDone: () => void }) {
   const parsers = useAsync(() => api.parsers(), [])
   const [file, setFile] = useState<File | null>(null)
-  const [selected, setSelected] = useState<number[]>([])
+  const [selected, setSelected] = useState<string[]>([])
   const [params, setParams] = useState('{}')
   const [docType, setDocType] = useState('')
-  const [projectId, setProjectId] = useState<number | ''>(defaultProjectId ?? '')
+  const [projectId, setProjectId] = useState<string | ''>(defaultProjectId ?? '')
   const [jobs, setJobs] = useState<ParseJob[]>([])
   const [error, setError] = useState('')
   const callable = parsers.data?.filter((p) => p.test_callable && p.enabled) ?? []
@@ -335,7 +334,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
   const plan = useAsync(() => papi.indexPlan(project.id, includeDesc), [project.id, includeDesc])
   const meta = useAsync(() => vapi.indexMeta(), [])
   const models = useAsync(() => vapi.embeddingModels(true), [])
-  const [modelId, setModelId] = useState<number>()
+  const [modelId, setModelId] = useState<string>()
   const [template, setTemplate] = useState(DEFAULT_EMBED_TEMPLATE)
   const [metric, setMetric] = useState('COSINE')
   const [mode, setMode] = useState<'append' | 'recreate'>('append')
@@ -347,7 +346,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
   const skipped = plan.data?.skipped ?? []
   const groups = plan.data?.groups ?? []
   // 기존 컬렉션에 추가할 때는 그 컬렉션의 임베딩 모델을 그대로 써야 한다
-  const lockedModels = [...new Set(groups.map((g) => g.existing_index?.embedding_model_id).filter((x): x is number => !!x))]
+  const lockedModels = [...new Set(groups.map((g) => g.existing_index?.embedding_model_id).filter((x): x is string => !!x))]
   const locked = mode === 'append' && lockedModels.length > 0
   const modelConflict = mode === 'append' && lockedModels.length > 1
   const shared = groups.filter((g) => g.others_in_collection > 0)
@@ -456,7 +455,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
                 <td>{i.title}</td>
                 <td className="small">{i.project_path.join(' / ')}</td>
                 <td className="small">
-                  <Link to={`/playground?doc=${i.document_id}&run=${i.run_id}`} target="_blank">#{i.run_id}</Link> · {i.method === 'llm' ? 'LLM' : '규칙'} · {fmtDate(i.created_at)}
+                  <Link to={`/playground?doc=${i.document_id}&run=${i.run_id}`} target="_blank" title={i.run_id}>{shortId(i.run_id)}</Link> · {i.method === 'llm' ? 'LLM' : '규칙'} · {fmtDate(i.created_at)}
                   {i.note && <div style={{ color: 'var(--warn)' }}>{i.note}</div>}
                 </td>
                 <td>{i.chunk_count}</td>
@@ -482,7 +481,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
           </select>
         </label>
         <label className="field">임베딩 모델
-          <select value={modelId ?? ''} disabled={locked && !modelConflict} onChange={(e) => setModelId(Number(e.target.value))}>
+          <select value={modelId ?? ''} disabled={locked && !modelConflict} onChange={(e) => setModelId(e.target.value)}>
             {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}{m.dimension ? ` (${m.dimension}d)` : ''}</option>)}
           </select>
           {locked && !modelConflict && <span className="small muted">기존 컬렉션의 모델로 고정 (바꾸려면 '비우고 다시 적재')</span>}

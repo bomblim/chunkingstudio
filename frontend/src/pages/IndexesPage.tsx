@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DEFAULT_EMBED_TEMPLATE, api, vapi } from '../api'
-import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling } from '../components/ui'
+import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling, shortId, Sid } from '../components/ui'
 import type { QueryResult, VectorIndex } from '../types'
 
 export default function IndexesPage() {
   const [sp, setSp] = useSearchParams()
-  const presetRun = Number(sp.get('run')) || undefined
+  const presetRun = sp.get('run') || undefined
   const indexes = useAsync(() => vapi.indexes(), [])
-  const [selId, setSelId] = useState<number>()
+  const [selId, setSelId] = useState<string>()
   const [creating, setCreating] = useState<boolean>(!!presetRun)
   const [appendFor, setAppendFor] = useState<VectorIndex | null>(null)
   const running = indexes.data?.some((i) => i.status === 'queued' || i.status === 'running') ?? false
@@ -35,7 +35,7 @@ export default function IndexesPage() {
                 <td><b>{ix.name}</b><div className="mono small muted">{ix.collection}</div></td>
                 <td>{ix.store_name}</td>
                 <td>{ix.embedding_model_name}<div className="small muted">{ix.dimension ? `${ix.dimension}차원 · ` : ''}{ix.metric}</div></td>
-                <td className="small">{ix.run_ids.map((r) => <span key={r} style={{ marginRight: 4 }}>#{r}</span>)}</td>
+                <td className="small">{ix.run_ids.map((r) => <span key={r} style={{ marginRight: 4 }}><Sid id={r} /></span>)}</td>
                 <td>{ix.chunk_count}</td>
                 <td>
                   <StatusBadge status={ix.status} />
@@ -72,10 +72,10 @@ export default function IndexesPage() {
   )
 }
 
-function useRunPicker(presetRun?: number) {
+function useRunPicker(presetRun?: string) {
   const docs = useAsync(() => api.documents(), [])
-  const [docId, setDocId] = useState<number>()
-  const [runId, setRunId] = useState<number | undefined>(presetRun)
+  const [docId, setDocId] = useState<string>()
+  const [runId, setRunId] = useState<string | undefined>(presetRun)
   const runs = useAsync(() => (docId ? api.runs(docId) : Promise.resolve([])), [docId])
   useEffect(() => {
     if (presetRun && !docId) void api.run(presetRun).then((r) => setDocId(r.document_id))
@@ -91,13 +91,13 @@ function useRunPicker(presetRun?: number) {
   const picker = (
     <div className="grid-2">
       <label className="field">문서
-        <select value={docId ?? ''} onChange={(e) => { setDocId(Number(e.target.value)); setRunId(undefined) }}>
-          {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.title} (#{d.id})</option>)}
+        <select value={docId ?? ''} onChange={(e) => { setDocId(e.target.value); setRunId(undefined) }}>
+          {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.title} ({shortId(d.id)})</option>)}
         </select>
       </label>
       <label className="field">청킹 실행 (완료된 것만)
-        <select value={runId ?? ''} onChange={(e) => setRunId(Number(e.target.value))}>
-          {doneRuns.map((r) => <option key={r.id} value={r.id}>#{r.id} · {r.method === 'llm' ? `LLM ${r.prompt_label} · ${r.model_name}` : '규칙 baseline'} · 청크 {r.totals.chunk_count}개 · {fmtDate(r.created_at)}</option>)}
+        <select value={runId ?? ''} onChange={(e) => setRunId(e.target.value)}>
+          {doneRuns.map((r) => <option key={r.id} value={r.id}>{shortId(r.id)} · {r.method === 'llm' ? `LLM ${r.prompt_label} · ${r.model_name}` : '규칙 baseline'} · 청크 {r.totals.chunk_count}개 · {fmtDate(r.created_at)}</option>)}
         </select>
         {runs.data && !doneRuns.length && <span className="small" style={{ color: 'var(--warn)' }}>완료된 청킹 실행이 없습니다. <Link to={`/playground?doc=${docId}`}>청킹 화면에서 실행 →</Link></span>}
       </label>
@@ -106,12 +106,12 @@ function useRunPicker(presetRun?: number) {
   return { docId, runId, run, picker }
 }
 
-function CreateIndexModal({ presetRun, onClose, onCreated }: { presetRun?: number; onClose: () => void; onCreated: (ix: VectorIndex) => void }) {
+function CreateIndexModal({ presetRun, onClose, onCreated }: { presetRun?: string; onClose: () => void; onCreated: (ix: VectorIndex) => void }) {
   const { docId, runId, run, picker } = useRunPicker(presetRun)
   const meta = useAsync(() => vapi.indexMeta(), [])
   const models = useAsync(() => vapi.embeddingModels(true), [])
   const target = useAsync(() => (docId ? vapi.indexTarget({ document_id: docId }) : Promise.resolve(null)), [docId])
-  const [modelId, setModelId] = useState<number>()
+  const [modelId, setModelId] = useState<string>()
   const [template, setTemplate] = useState(DEFAULT_EMBED_TEMPLATE)
   const [metric, setMetric] = useState('COSINE')
   const [error, setError] = useState('')
@@ -160,7 +160,7 @@ function CreateIndexModal({ presetRun, onClose, onCreated }: { presetRun?: numbe
       </div>
       <div className="grid-3">
         <label className="field">임베딩 모델
-          <select value={modelId ?? ''} disabled={!!existing} onChange={(e) => setModelId(Number(e.target.value))}>
+          <select value={modelId ?? ''} disabled={!!existing} onChange={(e) => setModelId(e.target.value)}>
             {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}{m.dimension ? ` (${m.dimension}d)` : ''}</option>)}
           </select>
         </label>
@@ -206,7 +206,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<string[]>([])
   const rerankers = useAsync(() => vapi.rerankModels(true), [])
-  const [rerankId, setRerankId] = useState<number | ''>('')
+  const [rerankId, setRerankId] = useState<string | ''>('')
   const [candidates, setCandidates] = useState<number | ''>('')
   const defaultCandidates = Math.min(200, Math.max(20, topK * 4))
 
@@ -246,7 +246,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
       {useAcl && <div className="small muted">공개(권한 목록 없음) 청크와, 권한 목록에 위 주체가 하나라도 있는 청크만 검색합니다. 이 기능 이전에 적재한 청크는 권한 정보가 없어 제외되니 다시 적재하세요.</div>}
       <div className="row small" style={{ marginTop: 6, flexWrap: 'nowrap' }}>
         <span style={{ whiteSpace: 'nowrap' }}>리랭크</span>
-        <select aria-label="리랭크 모델" value={rerankId} onChange={(e) => setRerankId(e.target.value ? Number(e.target.value) : '')}>
+        <select aria-label="리랭크 모델" value={rerankId} onChange={(e) => setRerankId(e.target.value ? e.target.value : '')}>
           <option value="">사용 안 함 (벡터 점수 순)</option>
           {rerankers.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
@@ -259,7 +259,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
       </div>
       {index.store_kind === 'milvus' && (
         <input style={{ marginTop: 6, width: '100%' }} className="mono" value={filter} onChange={(e) => setFilter(e.target.value)}
-          placeholder='Milvus 필터 (선택) — 예: run_id == 3  /  document_id in [1, 2]  /  metadata["doc_type"] == "사내 규정"' aria-label="필터" />
+          placeholder='Milvus 필터 (선택) — 예: document_id == "0193…"  /  metadata["doc_type"] == "사내 규정"  /  metadata["pages"][0] > 3' aria-label="필터" />
       )}
       {history.length > 0 && <div className="row small" style={{ marginTop: 6 }}>최근:{history.map((h) => <button key={h} className="sm ghost" onClick={() => { setQuery(h); void run(h) }}>{h}</button>)}</div>}
       <ErrorBanner error={error} />
@@ -300,7 +300,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
                 {h.metadata.public === false ? h.metadata.permissions?.map((p) => <span key={p} className="badge accent" style={{ marginRight: 4 }}>🔒 {p}</span>) : h.metadata.public ? <span className="badge ok" style={{ marginRight: 4 }}>공개</span> : null}
                 {Object.entries(h.metadata.project_meta ?? {}).map(([k, v]) => <span key={k} className="badge" style={{ marginRight: 4 }}>{k}={Array.isArray(v) ? v.join(', ') : String(v)}</span>)}
                 {h.metadata.document_title} · {h.section_path} · p.{h.metadata.pages?.join(',') || '-'} · {h.metadata.element_ids?.[0]}~{h.metadata.element_ids?.at(-1)}
-                {' · '}<Link to={`/playground?doc=${h.document_id}&run=${h.run_id}`}>실행 #{h.run_id}에서 보기</Link>
+                {' · '}<Link to={`/playground?doc=${h.document_id}&run=${h.run_id}`}>실행 <Sid id={h.run_id} />에서 보기</Link>
               </div>
               <div style={{ whiteSpace: 'pre-wrap', maxHeight: 180, overflow: 'auto' }}>{h.text}</div>
               {h.metadata.text_truncated && <div className="small" style={{ color: 'var(--warn)' }}>⚠ 원문이 저장 한도로 잘렸습니다</div>}

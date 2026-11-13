@@ -64,6 +64,7 @@ curl http://localhost:8000/api/health
 ## 4. 업그레이드 · 백업
 
 - 업그레이드: 새 tar를 `docker load` → `docker-compose.yml`의 이미지 태그 변경 → `docker compose up -d`. DB에 새 컬럼이 생기면 시작할 때 자동으로 추가됩니다.
+- 0.1.x(정수 ID) → UUID 버전 업그레이드: 처음 시작할 때 SQLite DB를 `data/studio.db.bak-int-<시각>`으로 백업한 뒤 모든 ID를 UUID로 한 번 변환합니다(이후 시작에서는 건너뜀). Milvus에 이미 적재한 컬렉션은 실행·문서 ID가 정수로 남아 있으므로 문서 화면의 "일괄 적재"에서 "컬렉션 비우고 다시 적재"로 다시 적재하세요. PostgreSQL(`CS_DATABASE_URL`)은 자동 변환 대상이 아닙니다.
 - 백업: 컨테이너를 멈추고 `data/` 디렉터리를 복사합니다 (`studio.db`, `files/`, `parse_raw/`, `vectors/`). Milvus 데이터는 Milvus 쪽에서 백업합니다.
 
 ## 5. 참고

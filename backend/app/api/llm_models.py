@@ -82,7 +82,7 @@ def create_model(body: ModelIn, db: Session = Depends(get_db)) -> dict[str, Any]
 
 
 @router.put("/{model_id}")
-def update_model(model_id: int, body: ModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_model(model_id: str, body: ModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     _validate(body)
     m = get_or_404(db, LLMModel, model_id)
     for k, v in body.model_dump().items():
@@ -92,14 +92,14 @@ def update_model(model_id: int, body: ModelIn, db: Session = Depends(get_db)) ->
 
 
 @router.delete("/{model_id}", status_code=204)
-def delete_model(model_id: int, db: Session = Depends(get_db)) -> None:
+def delete_model(model_id: str, db: Session = Depends(get_db)) -> None:
     m = get_or_404(db, LLMModel, model_id)
     m.enabled = False  # 실행 이력 보존을 위해 비활성화만
     db.commit()
 
 
 @router.post("/{model_id}/health")
-def model_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def model_health(model_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """헬스체크(MS-09): 짧은 구조화 출력 요청으로 응답·지연시간·사용 전략 확인."""
     m = get_or_404(db, LLMModel, model_id)
     schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"],

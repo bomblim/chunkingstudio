@@ -10,7 +10,7 @@ const STATUS_LABEL: Record<string, string> = { draft: '초안', testing: '테스
 export default function PromptsPage() {
   const prompts = useAsync(() => api.prompts(), [])
   const defaults = useAsync(() => api.promptDefaults(), [])
-  const [selId, setSelId] = useState<number>()
+  const [selId, setSelId] = useState<string>()
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
   const sel = prompts.data?.find((p) => p.id === selId) ?? prompts.data?.[0]
@@ -42,9 +42,9 @@ export default function PromptsPage() {
   )
 }
 
-function PromptDetail({ prompt, variables, wrap, onSelect }: { prompt: Prompt; variables: Record<string, string>; wrap: (fn: () => Promise<unknown>) => () => Promise<void>; onSelect: (id: number) => void }) {
+function PromptDetail({ prompt, variables, wrap, onSelect }: { prompt: Prompt; variables: Record<string, string>; wrap: (fn: () => Promise<unknown>) => () => Promise<void>; onSelect: (id: string) => void }) {
   const latest = prompt.versions[prompt.versions.length - 1]
-  const [editId, setEditId] = useState<number>(latest.id)
+  const [editId, setEditId] = useState<string>(latest.id)
   const base = prompt.versions.find((v) => v.id === editId) ?? latest
   const [system, setSystem] = useState(base.system_template)
   const [user, setUser] = useState(base.user_template)

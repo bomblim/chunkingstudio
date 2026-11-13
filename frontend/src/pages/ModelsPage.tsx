@@ -12,8 +12,8 @@ const EMPTY: ModelInput = {
 export default function ModelsPage() {
   const models = useAsync(() => api.models(), [])
   const meta = useAsync(() => api.modelsMeta(), [])
-  const [edit, setEdit] = useState<{ id?: number; data: ModelInput } | null>(null)
-  const [busy, setBusy] = useState<number>()
+  const [edit, setEdit] = useState<{ id?: string; data: ModelInput } | null>(null)
+  const [busy, setBusy] = useState<string>()
 
   return (
     <>
@@ -63,7 +63,7 @@ function strip(m: LLMModel): ModelInput {
 }
 
 function ModelForm({ initial, id, meta, onClose, onSaved }: {
-  initial: ModelInput; id?: number; meta: { providers: { name: string; label: string; engines: string[] }[]; strategies: string[] }
+  initial: ModelInput; id?: string; meta: { providers: { name: string; label: string; engines: string[] }[]; strategies: string[] }
   onClose: () => void; onSaved: () => void
 }) {
   const [d, setD] = useState<ModelInput>(initial)

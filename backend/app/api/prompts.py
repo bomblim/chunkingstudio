@@ -58,7 +58,7 @@ def _prompt_out(p: Prompt) -> dict[str, Any]:
     return d
 
 
-def _next_version(db: Session, prompt_id: int) -> int:
+def _next_version(db: Session, prompt_id: str) -> int:
     return (db.scalar(select(func.max(PromptVersion.version)).where(PromptVersion.prompt_id == prompt_id)) or 0) + 1
 
 
@@ -89,12 +89,12 @@ def create_prompt(body: PromptIn, db: Session = Depends(get_db)) -> dict[str, An
 
 
 @router.get("/{prompt_id}")
-def get_prompt(prompt_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_prompt(prompt_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _prompt_out(get_or_404(db, Prompt, prompt_id))
 
 
 @router.put("/{prompt_id}")
-def update_prompt(prompt_id: int, body: PromptMetaIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_prompt(prompt_id: str, body: PromptMetaIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     p = get_or_404(db, Prompt, prompt_id)
     p.description, p.doc_types = body.description, body.doc_types
     db.commit()
@@ -102,7 +102,7 @@ def update_prompt(prompt_id: int, body: PromptMetaIn, db: Session = Depends(get_
 
 
 @router.post("/{prompt_id}/versions", status_code=201)
-def create_version(prompt_id: int, body: VersionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def create_version(prompt_id: str, body: VersionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     """PM-04: 저장 = 새 버전 생성 (기존 버전은 불변)."""
     get_or_404(db, Prompt, prompt_id)
     v = PromptVersion(prompt_id=prompt_id, version=_next_version(db, prompt_id), **body.model_dump())
@@ -112,7 +112,7 @@ def create_version(prompt_id: int, body: VersionIn, db: Session = Depends(get_db
 
 
 @router.get("/versions/{version_id}")
-def get_version(version_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_version(version_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     v = get_or_404(db, PromptVersion, version_id)
     d = row_dict(v)
     d["prompt_name"] = v.prompt.name
@@ -120,7 +120,7 @@ def get_version(version_id: int, db: Session = Depends(get_db)) -> dict[str, Any
 
 
 @router.patch("/versions/{version_id}/status")
-def set_status(version_id: int, body: StatusIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def set_status(version_id: str, body: StatusIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     """PM-05: 상태 태그. production은 프롬프트당 1개만 유지(기존 production → approved).
 
     TODO(3단계): RBAC 도입 후 production 승격은 관리자만, 승격 게이트(ET-04) 통과 시에만 허용.
@@ -139,7 +139,7 @@ def set_status(version_id: int, body: StatusIn, db: Session = Depends(get_db)) -
 
 
 @router.post("/versions/{version_id}/rollback", status_code=201)
-def rollback(version_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def rollback(version_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """PM-04: 롤백 = 과거 버전 내용을 복사한 새 버전 생성."""
     v = get_or_404(db, PromptVersion, version_id)
     nv = PromptVersion(
@@ -153,7 +153,7 @@ def rollback(version_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.post("/versions/{version_id}/fork", status_code=201)
-def fork(version_id: int, body: ForkIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def fork(version_id: str, body: ForkIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     v = get_or_404(db, PromptVersion, version_id)
     if db.scalar(select(Prompt).where(Prompt.name == body.name)):
         raise HTTPException(409, "같은 이름의 프롬프트가 있습니다")
@@ -170,11 +170,11 @@ def fork(version_id: int, body: ForkIn, db: Session = Depends(get_db)) -> dict[s
 
 
 class PreviewIn(BaseModel):
-    document_id: int
+    document_id: str
     system_template: str
     user_template: str
     few_shots: list[dict[str, Any]] = Field(default_factory=list)
-    model_id: int | None = None
+    model_id: str | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
     params: dict[str, Any] = Field(default_factory=dict)
 

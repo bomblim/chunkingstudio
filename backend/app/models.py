@@ -8,6 +8,7 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+from .ids import new_id
 
 
 def utcnow() -> datetime:
@@ -23,7 +24,7 @@ class TimestampMixin:
 class Parser(TimestampMixin, Base):
     __tablename__ = "parsers"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[str] = mapped_column(String(50), default="1.0")
@@ -54,7 +55,7 @@ class StoredFile(TimestampMixin, Base):
 
     __tablename__ = "stored_files"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     file_name: Mapped[str] = mapped_column(String(500))
     file_hash: Mapped[str] = mapped_column(String(64), index=True)
     path: Mapped[str] = mapped_column(String(1000))
@@ -67,8 +68,8 @@ class ParseJob(TimestampMixin, Base):
 
     __tablename__ = "parse_jobs"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    parser_id: Mapped[int] = mapped_column(ForeignKey("parsers.id"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    parser_id: Mapped[str] = mapped_column(String(36), ForeignKey("parsers.id"))
     file_name: Mapped[str] = mapped_column(String(500))
     file_hash: Mapped[str] = mapped_column(String(64))
     params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -78,8 +79,8 @@ class ParseJob(TimestampMixin, Base):
     error: Mapped[str] = mapped_column(Text, default="")
     elapsed_ms: Mapped[int] = mapped_column(Integer, default=0)
     raw_response_path: Mapped[str] = mapped_column(String(1000), default="")
-    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
-    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 파싱 완료 시 문서를 배정할 프로젝트
+    document_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("documents.id"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # 파싱 완료 시 문서를 배정할 프로젝트
 
     parser: Mapped[Parser] = relationship()
 
@@ -93,24 +94,24 @@ class Project(TimestampMixin, Base):
 
     __tablename__ = "projects"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
-    parent_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     # ---- 청킹 프로파일 (None = 상위에서 상속)
     method: Mapped[str | None] = mapped_column(String(30), nullable=True)  # llm | rule_structure
-    prompt_id: Mapped[int | None] = mapped_column(ForeignKey("prompts.id"), nullable=True)
+    prompt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("prompts.id"), nullable=True)
     # 고정할 프롬프트 버전. None이면 실행 시점의 운영(production) 버전, 없으면 최신 버전
-    prompt_version_id: Mapped[int | None] = mapped_column(ForeignKey("prompt_versions.id"), nullable=True)
-    model_id: Mapped[int | None] = mapped_column(ForeignKey("llm_models.id"), nullable=True)
+    prompt_version_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("prompt_versions.id"), nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("llm_models.id"), nullable=True)
     params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     settings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # (구버전 호환) 저장소 단위로 지정하던 값. 시작 시 vector_collection_id로 옮긴다.
-    vector_store_id: Mapped[int | None] = mapped_column(ForeignKey("vector_stores.id"), nullable=True)
+    vector_store_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("vector_stores.id"), nullable=True)
     # 청크를 적재할 컬렉션. None이면 상위 상속, 끝까지 없으면 기본 컬렉션
-    vector_collection_id: Mapped[int | None] = mapped_column(ForeignKey("vector_collections.id"), nullable=True)
+    vector_collection_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("vector_collections.id"), nullable=True)
     # ---- 메타데이터·권한 (벡터 DB 적재 시 청크에 함께 저장)
     # 자유 키-값. 상위 값을 물려받고 같은 키는 하위 값이 우선
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -124,9 +125,9 @@ class Project(TimestampMixin, Base):
 class Document(TimestampMixin, Base):
     __tablename__ = "documents"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     title: Mapped[str] = mapped_column(String(500))
-    parser_id: Mapped[int | None] = mapped_column(ForeignKey("parsers.id"), nullable=True)
+    parser_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("parsers.id"), nullable=True)
     parser_name: Mapped[str] = mapped_column(String(200), default="")
     parser_version: Mapped[str] = mapped_column(String(50), default="")
     file_hash: Mapped[str] = mapped_column(String(64), default="")
@@ -134,7 +135,7 @@ class Document(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(20), default="runtime")  # runtime | test
     doc_type: Mapped[str] = mapped_column(String(100), default="")
     revision: Mapped[int] = mapped_column(Integer, default=1)  # 재파싱 시 누적(IN-05)
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True, index=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSON)  # StandardDocument
     stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
@@ -144,8 +145,8 @@ class IngestFailure(TimestampMixin, Base):
 
     __tablename__ = "ingest_failures"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    parser_id: Mapped[int | None] = mapped_column(ForeignKey("parsers.id"), nullable=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    parser_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("parsers.id"), nullable=True)
     source_name: Mapped[str] = mapped_column(String(500), default="")
     reason: Mapped[str] = mapped_column(Text)
     payload_excerpt: Mapped[str] = mapped_column(Text, default="")
@@ -155,7 +156,7 @@ class IngestFailure(TimestampMixin, Base):
 class LLMModel(TimestampMixin, Base):
     __tablename__ = "llm_models"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     # openai_compatible | anthropic | mock
     provider: Mapped[str] = mapped_column(String(50))
@@ -180,11 +181,11 @@ class LLMModel(TimestampMixin, Base):
 class Prompt(TimestampMixin, Base):
     __tablename__ = "prompts"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
     doc_types: Mapped[list[str]] = mapped_column(JSON, default=list)  # PM-06
-    forked_from_version_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    forked_from_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     versions: Mapped[list[PromptVersion]] = relationship(
         back_populates="prompt", order_by="PromptVersion.version", cascade="all, delete-orphan"
@@ -194,8 +195,8 @@ class Prompt(TimestampMixin, Base):
 class PromptVersion(TimestampMixin, Base):
     __tablename__ = "prompt_versions"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    prompt_id: Mapped[int] = mapped_column(ForeignKey("prompts.id"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    prompt_id: Mapped[str] = mapped_column(String(36), ForeignKey("prompts.id"))
     version: Mapped[int] = mapped_column(Integer)
     system_template: Mapped[str] = mapped_column(Text)
     user_template: Mapped[str] = mapped_column(Text)
@@ -212,10 +213,10 @@ class PromptVersion(TimestampMixin, Base):
 class ChunkRun(TimestampMixin, Base):
     __tablename__ = "chunk_runs"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"))
-    prompt_version_id: Mapped[int | None] = mapped_column(ForeignKey("prompt_versions.id"), nullable=True)
-    model_id: Mapped[int | None] = mapped_column(ForeignKey("llm_models.id"), nullable=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("documents.id"))
+    prompt_version_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("prompt_versions.id"), nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("llm_models.id"), nullable=True)
     method: Mapped[str] = mapped_column(String(30), default="llm")  # llm | rule_structure
     params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # 모델 파라미터
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # 윈도우·크기·범위 등
@@ -236,7 +237,7 @@ class ChunkRun(TimestampMixin, Base):
 class EmbeddingModel(TimestampMixin, Base):
     __tablename__ = "embedding_models"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     # openai_compatible(/v1/embeddings: TEI·vLLM·Ollama·상용) | mock
     provider: Mapped[str] = mapped_column(String(50))
@@ -261,7 +262,7 @@ class RerankModel(TimestampMixin, Base):
 
     __tablename__ = "rerank_models"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     # tei(/rerank) | cohere_compatible(/rerank, Cohere 형식: vLLM·Infinity·Jina·Cohere)
     # | nvidia_nim(/ranking, NVIDIA NeMo Retriever·Nemotron 리랭크) | mock
@@ -283,7 +284,7 @@ class RerankModel(TimestampMixin, Base):
 class VectorStore(TimestampMixin, Base):
     __tablename__ = "vector_stores"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     kind: Mapped[str] = mapped_column(String(30))  # milvus | memory
     uri: Mapped[str] = mapped_column(String(1000), default="")
@@ -307,8 +308,8 @@ class VectorCollection(TimestampMixin, Base):
     __tablename__ = "vector_collections"
     __table_args__ = (UniqueConstraint("store_id", "name", name="uq_vector_collection_store_name"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    store_id: Mapped[int] = mapped_column(ForeignKey("vector_stores.id"), index=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    store_id: Mapped[str] = mapped_column(String(36), ForeignKey("vector_stores.id"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     # 기본 컬렉션: 미분류 문서와 컬렉션을 지정하지 않은 프로젝트의 문서가 적재되는 곳(전체에서 하나)
@@ -321,16 +322,16 @@ class VectorIndex(TimestampMixin, Base):
 
     __tablename__ = "vector_indexes"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200))
-    store_id: Mapped[int] = mapped_column(ForeignKey("vector_stores.id"))
+    store_id: Mapped[str] = mapped_column(String(36), ForeignKey("vector_stores.id"))
     collection: Mapped[str] = mapped_column(String(255))
-    embedding_model_id: Mapped[int] = mapped_column(ForeignKey("embedding_models.id"))
+    embedding_model_id: Mapped[str] = mapped_column(String(36), ForeignKey("embedding_models.id"))
     # 임베딩할 텍스트 템플릿: {text} {title} {summary} {keywords} {section_path} {document_title}
     embed_template: Mapped[str] = mapped_column(Text, default="{text}")
     metric: Mapped[str] = mapped_column(String(20), default="COSINE")
     dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    run_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    run_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     # queued | running | done | failed
     status: Mapped[str] = mapped_column(String(20), default="queued")
     progress: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

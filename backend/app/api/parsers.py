@@ -90,12 +90,12 @@ def create_parser(body: ParserIn, db: Session = Depends(get_db)) -> dict[str, An
 
 
 @router.get("/parsers/{parser_id}")
-def get_parser(parser_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_parser(parser_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _with_stats(db, get_or_404(db, Parser, parser_id))
 
 
 @router.put("/parsers/{parser_id}")
-def update_parser(parser_id: int, body: ParserIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_parser(parser_id: str, body: ParserIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     _check_mode(body)
     p = get_or_404(db, Parser, parser_id)
     for k, v in body.model_dump().items():
@@ -105,7 +105,7 @@ def update_parser(parser_id: int, body: ParserIn, db: Session = Depends(get_db))
 
 
 @router.post("/parsers/{parser_id}/health")
-def parser_health(parser_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def parser_health(parser_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """연결 테스트(PR-08): 작은 텍스트 파일로 실제 API를 호출해 본다."""
     p = get_or_404(db, Parser, parser_id)
     started = time.monotonic()
@@ -131,7 +131,7 @@ def parser_health(parser_id: int, db: Session = Depends(get_db)) -> dict[str, An
 
 
 @router.get("/parsers/{parser_id}/jobs")
-def parser_jobs(parser_id: int, limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+def parser_jobs(parser_id: str, limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(ParseJob).where(ParseJob.parser_id == parser_id).order_by(ParseJob.id.desc()).limit(limit)
     )

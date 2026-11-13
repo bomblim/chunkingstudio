@@ -73,7 +73,7 @@ def build_rows(
     return rows, inputs, warnings
 
 
-def execute_index_job(index_id: int, run_id: int, mode: str, *, replace_document: bool = False,
+def execute_index_job(index_id: str, run_id: str, mode: str, *, replace_document: bool = False,
                       finalize: bool = True) -> str | None:
     """mode: create(없으면 생성) | recreate(삭제 후 생성) | append(기존 컬렉션에 추가, 같은 실행은 교체).
 
@@ -123,6 +123,11 @@ def execute_index_job(index_id: int, run_id: int, mode: str, *, replace_document
             exists = False
         if exists:
             info = store.describe(index.collection)
+            if info.get("legacy_int_ids"):
+                raise VectorStoreError(
+                    f"'{index.collection}'은(는) ID를 정수로 쓰던 이전 형식 컬렉션입니다. "
+                    "'컬렉션 비우고 다시 적재'로 다시 만드세요"
+                )
             if info.get("dimension") and info["dimension"] != dim:
                 raise VectorStoreError(
                     f"기존 컬렉션 차원({info['dimension']})과 임베딩 차원({dim})이 다릅니다. 다른 컬렉션 이름을 쓰거나 재생성하세요"
@@ -167,7 +172,7 @@ def execute_index_job(index_id: int, run_id: int, mode: str, *, replace_document
         db.close()
 
 
-def execute_index_batch(index_id: int, items: list[dict[str, Any]], mode: str) -> None:
+def execute_index_batch(index_id: str, items: list[dict[str, Any]], mode: str) -> None:
     """여러 문서의 청킹 실행을 한 컬렉션에 순차 적재한다.
 
     items: [{"run_id", "document_id", "title"}]. 첫 건은 mode(create/recreate/append)로, 이후는 append로 넣고
@@ -210,7 +215,7 @@ def execute_index_batch(index_id: int, items: list[dict[str, Any]], mode: str) -
         db.close()
 
 
-def _set_batch(index_id: int, batch: dict[str, Any]) -> None:
+def _set_batch(index_id: str, batch: dict[str, Any]) -> None:
     db = SessionLocal()
     try:
         index = db.get(VectorIndex, index_id)

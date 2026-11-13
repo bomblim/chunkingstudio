@@ -52,7 +52,7 @@ def test_upload_parse_chunk_index_flow(client):
 
 
 def test_pipeline_api_errors(client):
-    assert client.post("/api/parse-jobs", json={"file_id": 999999, "parser_id": 1}).status_code == 404
+    assert client.post("/api/parse-jobs", json={"file_id": "0193a8c2-0000-7000-8000-000000000000", "parser_id": "0193a8c2-0000-7000-8000-000000000001"}).status_code == 404
     up = client.post("/api/parser-dummy")  # 존재하지 않는 경로
     assert up.status_code in (404, 405)
     # 미분류 문서는 method를 생략하면 프로젝트 프로파일이 없어 400

@@ -9,10 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import dev, documents, llm_models, parsers, projects, prompts, runs, vectors
 from .config import settings
 from .db import Base, SessionLocal, add_missing_columns, engine
+from .migrate_uuid import migrate_int_ids_to_uuid
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    migrate_int_ids_to_uuid(engine)  # 정수 ID DB면 한 번 변환(백업 후)
     Base.metadata.create_all(engine)
     add_missing_columns()
     if settings.seed:

@@ -121,7 +121,7 @@ def test_milvus_round_trip(client):
     res = client.post(f"/api/indexes/{ix['id']}/query", json={"query": "통신비 지원 한도", "top_k": 2}).json()
     assert "통신비" in res["hits"][0]["text"]
     filtered = client.post(f"/api/indexes/{ix['id']}/query",
-                           json={"query": "통신비", "top_k": 5, "filter": f"run_id == {run['id']}"}).json()
+                           json={"query": "통신비", "top_k": 5, "filter": f'run_id == "{run["id"]}"'}).json()
     assert all(h["run_id"] == run["id"] for h in filtered["hits"])
     client.delete(f"/api/indexes/{ix['id']}", params={"drop_collection": True})
 

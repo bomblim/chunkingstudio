@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, type ParserInput } from '../api'
-import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync } from '../components/ui'
+import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, Sid } from '../components/ui'
 import type { Parser } from '../types'
 
 const EMPTY: ParserInput = {
@@ -19,9 +19,9 @@ const UPSTAGE_CONFIG_DEFAULT = { project_id: '', model: '', config_id: '1', purp
 
 export default function ParsersPage() {
   const parsers = useAsync(() => api.parsers(), [])
-  const [edit, setEdit] = useState<{ id?: number; data: ParserInput } | null>(null)
+  const [edit, setEdit] = useState<{ id?: string; data: ParserInput } | null>(null)
   const [jobsFor, setJobsFor] = useState<Parser | null>(null)
-  const [busy, setBusy] = useState<number>()
+  const [busy, setBusy] = useState<string>()
 
   return (
     <>
@@ -74,7 +74,7 @@ function strip(p: Parser): ParserInput {
   return rest
 }
 
-function ParserForm({ initial, id, onClose, onSaved }: { initial: ParserInput; id?: number; onClose: () => void; onSaved: () => void }) {
+function ParserForm({ initial, id, onClose, onSaved }: { initial: ParserInput; id?: string; onClose: () => void; onSaved: () => void }) {
   const adapters = useAsync(() => api.adapters(), [])
   const [d, setD] = useState<ParserInput>(initial)
   const [paramSchema, setParamSchema] = useState(JSON.stringify(initial.param_schema, null, 2))
@@ -179,7 +179,7 @@ function JobsModal({ parser, onClose }: { parser: Parser; onClose: () => void })
         <tbody>
           {jobs.data?.map((j) => (
             <tr key={j.id}>
-              <td>{j.id}</td><td>{j.file_name}</td><td><StatusBadge status={j.status} /></td>
+              <td><Sid id={j.id} /></td><td>{j.file_name}</td><td><StatusBadge status={j.status} /></td>
               <td>{j.elapsed_ms ? `${j.elapsed_ms}ms` : '-'}</td>
               <td className="small">{j.error_kind && <b>{j.error_kind}</b>} {j.error.slice(0, 160)}</td>
               <td className="small muted">{fmtDate(j.created_at)}</td>

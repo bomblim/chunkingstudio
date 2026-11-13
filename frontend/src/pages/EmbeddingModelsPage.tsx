@@ -12,8 +12,8 @@ const ENGINES = ['tei', 'vllm', 'ollama', 'openai', 'other']
 
 export default function EmbeddingModelsPage() {
   const models = useAsync(() => vapi.embeddingModels(), [])
-  const [edit, setEdit] = useState<{ id?: number; data: EmbeddingModelInput } | null>(null)
-  const [busy, setBusy] = useState<number>()
+  const [edit, setEdit] = useState<{ id?: string; data: EmbeddingModelInput } | null>(null)
+  const [busy, setBusy] = useState<string>()
 
   return (
     <>
@@ -61,7 +61,7 @@ function strip(m: EmbeddingModel): EmbeddingModelInput {
   return rest
 }
 
-function EmbeddingForm({ initial, id, onClose, onSaved }: { initial: EmbeddingModelInput; id?: number; onClose: () => void; onSaved: () => void }) {
+function EmbeddingForm({ initial, id, onClose, onSaved }: { initial: EmbeddingModelInput; id?: string; onClose: () => void; onSaved: () => void }) {
   const [d, setD] = useState<EmbeddingModelInput>(initial)
   const [extra, setExtra] = useState(JSON.stringify(initial.extra_params, null, 2))
   const [error, setError] = useState('')

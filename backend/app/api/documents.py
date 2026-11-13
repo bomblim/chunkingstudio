@@ -22,7 +22,7 @@ from . import get_or_404, row_dict
 router = APIRouter(prefix="/api", tags=["documents"])
 
 
-def _summary(d: Document, tree: dict[int, Project] | None = None, last_run: ChunkRun | None = None) -> dict[str, Any]:
+def _summary(d: Document, tree: dict[str, Project] | None = None, last_run: ChunkRun | None = None) -> dict[str, Any]:
     out = row_dict(d, exclude={"content"})
     if tree is not None:
         out["project_path"] = path_names(tree, d.project_id)
@@ -33,7 +33,7 @@ def _summary(d: Document, tree: dict[int, Project] | None = None, last_run: Chun
     return out
 
 
-def _check_project(db: Session, project_id: int | None) -> int | None:
+def _check_project(db: Session, project_id: str | None) -> str | None:
     if project_id in (None, 0):
         return None
     get_or_404(db, Project, project_id)
@@ -42,10 +42,10 @@ def _check_project(db: Session, project_id: int | None) -> int | None:
 
 @router.get("/documents")
 def list_documents(
-    parser_id: int | None = None,
+    parser_id: str | None = None,
     source: str | None = None,
     q: str | None = None,
-    project_id: int | None = None,
+    project_id: str | None = None,
     unassigned: bool = False,
     include_descendants: bool = True,
     db: Session = Depends(get_db),
@@ -69,7 +69,7 @@ def list_documents(
             d for d in rows
             if ql in d.title.lower() or any(ql in (e.get("text") or "").lower() for e in d.content.get("elements", []))
         ]
-    last: dict[int, ChunkRun] = {}
+    last: dict[str, ChunkRun] = {}
     if rows:
         for r in db.scalars(select(ChunkRun).where(ChunkRun.document_id.in_([d.id for d in rows]))
                             .order_by(ChunkRun.id)):
@@ -80,17 +80,17 @@ def list_documents(
 class DocumentPatch(BaseModel):
     title: str | None = None
     doc_type: str | None = None
-    project_id: int | None = None
+    project_id: str | None = None
     clear_project: bool = False  # true면 미분류로
 
 
 class MoveIn(BaseModel):
-    document_ids: list[int]
-    project_id: int | None = None  # None이면 미분류로
+    document_ids: list[str]
+    project_id: str | None = None  # None이면 미분류로
 
 
 @router.patch("/documents/{doc_id}")
-def patch_document(doc_id: int, body: DocumentPatch, db: Session = Depends(get_db)) -> dict[str, Any]:
+def patch_document(doc_id: str, body: DocumentPatch, db: Session = Depends(get_db)) -> dict[str, Any]:
     d = get_or_404(db, Document, doc_id)
     if body.title is not None:
         d.title = body.title
@@ -115,7 +115,7 @@ def move_documents(body: MoveIn, db: Session = Depends(get_db)) -> dict[str, Any
 
 
 @router.get("/documents/{doc_id}")
-def get_document(doc_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_document(doc_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     d = get_or_404(db, Document, doc_id)
     out = row_dict(d)
     out["has_source_file"] = bool(d.source_file_path and Path(d.source_file_path).exists())
@@ -132,7 +132,7 @@ def get_document(doc_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/documents/{doc_id}/file")
-def get_document_file(doc_id: int, db: Session = Depends(get_db)) -> FileResponse:
+def get_document_file(doc_id: str, db: Session = Depends(get_db)) -> FileResponse:
     d = get_or_404(db, Document, doc_id)
     if not d.source_file_path or not Path(d.source_file_path).exists():
         raise HTTPException(404, "원본 파일이 없습니다")
@@ -156,7 +156,7 @@ def source_kind(path: str | None) -> str:
 
 
 @router.get("/documents/{doc_id}/page-image/{page_no}")
-def get_page_image(doc_id: int, page_no: int, db: Session = Depends(get_db)) -> Response:
+def get_page_image(doc_id: str, page_no: int, db: Session = Depends(get_db)) -> Response:
     d = get_or_404(db, Document, doc_id)
     if not d.source_file_path or not Path(d.source_file_path).exists():
         raise HTTPException(404, "원본 파일이 없습니다")
@@ -183,7 +183,7 @@ def get_page_image(doc_id: int, page_no: int, db: Session = Depends(get_db)) -> 
 
 
 @router.delete("/documents/{doc_id}", status_code=204)
-def delete_document(doc_id: int, db: Session = Depends(get_db)) -> None:
+def delete_document(doc_id: str, db: Session = Depends(get_db)) -> None:
     d = get_or_404(db, Document, doc_id)
     db.delete(d)
     db.commit()
@@ -191,12 +191,12 @@ def delete_document(doc_id: int, db: Session = Depends(get_db)) -> None:
 
 # ------------------------------------------------------------------ 운영 유입 (Parser 결과 수신)
 class IngestIn(BaseModel):
-    parser_id: int
+    parser_id: str
     title: str
     payload: Any
     doc_type: str = ""
     file_hash: str = ""
-    project_id: int | None = None
+    project_id: str | None = None
 
 
 @router.post("/ingest", status_code=201)
@@ -214,9 +214,9 @@ def ingest(body: IngestIn, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 @router.post("/ingest/batch")
 async def ingest_batch(
-    parser_id: int = Form(...),
+    parser_id: str = Form(...),
     doc_type: str = Form(""),
-    project_id: int | None = Form(None),
+    project_id: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -266,7 +266,7 @@ async def test_parse(
     parser_ids: str = Form(..., description="쉼표로 구분한 Parser ID"),
     params: str = Form("{}", description="Parser 파라미터 JSON"),
     doc_type: str = Form(""),
-    project_id: int | None = Form(None),
+    project_id: str | None = Form(None),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """IN-02: 샘플 문서 업로드 → 선택한 Parser API를 직접 호출 → 표준 스키마로 변환."""
@@ -278,7 +278,7 @@ async def test_parse(
     except json.JSONDecodeError as exc:
         raise HTTPException(400, f"params JSON 오류: {exc}") from exc
     project_id = _check_project(db, project_id)
-    ids = [int(x) for x in parser_ids.split(",") if x.strip()]
+    ids = [x.strip() for x in parser_ids.split(",") if x.strip()]
     if not ids:
         raise HTTPException(400, "Parser를 하나 이상 선택하세요")
     path = store_file(data, file.filename or "upload")
@@ -315,14 +315,14 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
 
 
 @router.get("/files/{file_id}")
-def get_file(file_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_file(file_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     return row_dict(get_or_404(db, StoredFile, file_id), exclude={"path"})
 
 
 class ParseJobIn(BaseModel):
-    file_id: int
-    parser_id: int
-    project_id: int | None = None  # 파싱 결과 문서를 넣을 프로젝트
+    file_id: str
+    parser_id: str
+    project_id: str | None = None  # 파싱 결과 문서를 넣을 프로젝트
     doc_type: str = ""
     params: dict[str, Any] = {}  # Parser 파라미터
 
@@ -353,7 +353,7 @@ def _job_out(j: ParseJob) -> dict[str, Any]:
 
 
 @router.get("/parse-jobs/{job_id}")
-def get_parse_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_parse_job(job_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """status: queued → parsing → converting → done(document_id 생성) | failed(error_kind, error)"""
     return _job_out(get_or_404(db, ParseJob, job_id))
 
@@ -362,14 +362,14 @@ def get_parse_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
 def list_parse_jobs(ids: str | None = None, limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     stmt = select(ParseJob).order_by(ParseJob.id.desc())
     if ids:
-        stmt = stmt.where(ParseJob.id.in_([int(x) for x in ids.split(",") if x.strip()]))
+        stmt = stmt.where(ParseJob.id.in_([x.strip() for x in ids.split(",") if x.strip()]))
     else:
         stmt = stmt.limit(limit)
     return [_job_out(j) for j in db.scalars(stmt)]
 
 
 @router.get("/parse-jobs/{job_id}/raw")
-def parse_job_raw(job_id: int, db: Session = Depends(get_db)) -> PlainTextResponse:
+def parse_job_raw(job_id: str, db: Session = Depends(get_db)) -> PlainTextResponse:
     job = get_or_404(db, ParseJob, job_id)
     if not job.raw_response_path or not Path(job.raw_response_path).exists():
         raise HTTPException(404, "원본 응답이 없습니다")

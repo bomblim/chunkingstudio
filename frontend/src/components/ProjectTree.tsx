@@ -2,14 +2,17 @@ import { useMemo, useState } from 'react'
 import type { Project, ProjectTree as Tree } from '../types'
 
 /** 선택 값: 'all'(전체) | 'unassigned'(미분류) | 프로젝트 id */
-export type ProjectSelection = 'all' | 'unassigned' | number
+export type ProjectSelection = 'all' | 'unassigned' | string
+
+/** 선택 값이 실제 프로젝트 id인지 */
+export const isProjectId = (v: ProjectSelection | null | undefined): v is string => !!v && v !== 'all' && v !== 'unassigned'
 
 interface Node { p: Project; children: Node[] }
 
 export function buildTree(projects: Project[]): Node[] {
-  const byParent = new Map<number | null, Project[]>()
+  const byParent = new Map<string | null, Project[]>()
   for (const p of projects) byParent.set(p.parent_id, [...(byParent.get(p.parent_id) ?? []), p])
-  const make = (parent: number | null, seen: Set<number>): Node[] =>
+  const make = (parent: string | null, seen: Set<string>): Node[] =>
     (byParent.get(parent) ?? [])
       .filter((p) => !seen.has(p.id))
       .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'ko'))
@@ -18,8 +21,8 @@ export function buildTree(projects: Project[]): Node[] {
 }
 
 /** 하위 전체 id (자기 포함) */
-export function descendantIds(projects: Project[], id: number): Set<number> {
-  const out = new Set<number>([id])
+export function descendantIds(projects: Project[], id: string): Set<string> {
+  const out = new Set<string>([id])
   let grew = true
   while (grew) {
     grew = false
@@ -29,8 +32,8 @@ export function descendantIds(projects: Project[], id: number): Set<number> {
 }
 
 /** 프로젝트를 들여쓰기된 select option 목록으로 */
-export function projectOptions(projects: Project[], exclude?: Set<number>) {
-  const out: { id: number; label: string }[] = []
+export function projectOptions(projects: Project[], exclude?: Set<string>) {
+  const out: { id: string; label: string }[] = []
   const walk = (nodes: Node[], depth: number) => {
     for (const n of nodes) {
       if (exclude?.has(n.p.id)) continue
@@ -46,10 +49,10 @@ export function ProjectTreeView({ tree, value, onChange, onAddChild }: {
   tree: Tree
   value: ProjectSelection
   onChange: (v: ProjectSelection) => void
-  onAddChild: (parentId: number | null) => void
+  onAddChild: (parentId: string | null) => void
 }) {
   const roots = useMemo(() => buildTree(tree.projects), [tree.projects])
-  const [closed, setClosed] = useState<Record<number, boolean>>({})
+  const [closed, setClosed] = useState<Record<string, boolean>>({})
 
   const row = (label: React.ReactNode, count: number, sel: ProjectSelection, depth = 0, toggle?: React.ReactNode) => (
     <div className={`ptree-row ${value === sel ? 'selected' : ''}`} style={{ paddingLeft: 6 + depth * 14 }} onClick={() => onChange(sel)}
@@ -83,8 +86,8 @@ export function ProjectTreeView({ tree, value, onChange, onAddChild }: {
       {row(<b>전체 문서</b>, tree.total_count, 'all')}
       {render(roots, 0)}
       {row(<span className="muted">미분류</span>, tree.unassigned_count, 'unassigned')}
-      <button className="sm" style={{ marginTop: 8, width: '100%' }} onClick={() => onAddChild(typeof value === 'number' ? value : null)}>
-        + {typeof value === 'number' ? '하위 프로젝트' : '프로젝트'} 추가
+      <button className="sm" style={{ marginTop: 8, width: '100%' }} onClick={() => onAddChild(isProjectId(value) ? value : null)}>
+        + {isProjectId(value) ? '하위 프로젝트' : '프로젝트'} 추가
       </button>
     </div>
   )

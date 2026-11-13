@@ -57,53 +57,53 @@ export type VersionInput = Pick<PromptVersion, 'system_template' | 'user_templat
 export const api = {
   health: () => get<{ ok: boolean; allow_external_llm: boolean; studio_url: string }>('/api/health'),
   // documents
-  documents: (f: { parser_id?: number; source?: string; q?: string; project_id?: number; unassigned?: boolean; include_descendants?: boolean } = {}) =>
+  documents: (f: { parser_id?: string; source?: string; q?: string; project_id?: string; unassigned?: boolean; include_descendants?: boolean } = {}) =>
     get<DocumentSummary[]>(`/api/documents${qs(f)}`),
-  document: (id: number) => get<DocumentDetail>(`/api/documents/${id}`),
-  deleteDocument: (id: number) => del(`/api/documents/${id}`),
-  documentFileUrl: (id: number) => `/api/documents/${id}/file`,
-  documentPageImageUrl: (id: number, pageNo: number) => `/api/documents/${id}/page-image/${pageNo}`,
+  document: (id: string) => get<DocumentDetail>(`/api/documents/${id}`),
+  deleteDocument: (id: string) => del(`/api/documents/${id}`),
+  documentFileUrl: (id: string) => `/api/documents/${id}/file`,
+  documentPageImageUrl: (id: string, pageNo: number) => `/api/documents/${id}/page-image/${pageNo}`,
   ingestBatch: (form: FormData) => post<{ imported: DocumentSummary[]; failed: { title: string; reason: string }[] }>('/api/ingest/batch', form),
-  ingestFailures: () => get<{ id: number; source_name: string; reason: string; created_at: string }[]>('/api/ingest/failures'),
+  ingestFailures: () => get<{ id: string; source_name: string; reason: string; created_at: string }[]>('/api/ingest/failures'),
   testParse: (form: FormData) => post<ParseJob[]>('/api/test-parse', form),
-  parseJobs: (ids?: number[]) => get<ParseJob[]>(`/api/parse-jobs${qs({ ids: ids?.join(',') })}`),
-  parseJobRawUrl: (id: number) => `/api/parse-jobs/${id}/raw`,
+  parseJobs: (ids?: string[]) => get<ParseJob[]>(`/api/parse-jobs${qs({ ids: ids?.join(',') })}`),
+  parseJobRawUrl: (id: string) => `/api/parse-jobs/${id}/raw`,
 
   // parsers
   adapters: () => get<{ name: string; description: string }[]>('/api/adapters'),
   parsers: () => get<Parser[]>('/api/parsers'),
   createParser: (p: ParserInput) => post<Parser>('/api/parsers', p),
-  updateParser: (id: number, p: ParserInput) => put<Parser>(`/api/parsers/${id}`, p),
-  parserHealth: (id: number) => post<Parser['last_health']>(`/api/parsers/${id}/health`),
-  parserJobs: (id: number) => get<ParseJob[]>(`/api/parsers/${id}/jobs`),
+  updateParser: (id: string, p: ParserInput) => put<Parser>(`/api/parsers/${id}`, p),
+  parserHealth: (id: string) => post<Parser['last_health']>(`/api/parsers/${id}/health`),
+  parserJobs: (id: string) => get<ParseJob[]>(`/api/parsers/${id}/jobs`),
 
   // models
   modelsMeta: () => get<{ providers: { name: string; label: string; engines: string[] }[]; strategies: string[]; allow_external_llm: boolean }>('/api/models/meta'),
   models: (usableOnly = false) => get<LLMModel[]>(`/api/models${qs({ usable_only: usableOnly })}`),
   createModel: (m: ModelInput) => post<LLMModel>('/api/models', m),
-  updateModel: (id: number, m: ModelInput) => put<LLMModel>(`/api/models/${id}`, m),
-  modelHealth: (id: number) => post<LLMModel['last_health']>(`/api/models/${id}/health`),
+  updateModel: (id: string, m: ModelInput) => put<LLMModel>(`/api/models/${id}`, m),
+  modelHealth: (id: string) => post<LLMModel['last_health']>(`/api/models/${id}/health`),
 
   // prompts
   promptDefaults: () => get<{ system_template: string; user_template: string; output_schema: Record<string, unknown>; variables: Record<string, string>; statuses: string[] }>('/api/prompts/defaults'),
   prompts: () => get<Prompt[]>('/api/prompts'),
-  prompt: (id: number) => get<Prompt>(`/api/prompts/${id}`),
+  prompt: (id: string) => get<Prompt>(`/api/prompts/${id}`),
   createPrompt: (name: string, description = '') => post<Prompt>('/api/prompts', { name, description }),
-  updatePrompt: (id: number, description: string, doc_types: string[]) => put<Prompt>(`/api/prompts/${id}`, { description, doc_types }),
-  createVersion: (promptId: number, v: VersionInput) => post<PromptVersion>(`/api/prompts/${promptId}/versions`, v),
-  setVersionStatus: (versionId: number, status: string) => patch<PromptVersion>(`/api/prompts/versions/${versionId}/status`, { status }),
-  rollbackVersion: (versionId: number) => post<PromptVersion>(`/api/prompts/versions/${versionId}/rollback`),
-  forkVersion: (versionId: number, name: string) => post<Prompt>(`/api/prompts/versions/${versionId}/fork`, { name }),
-  previewPrompt: (body: { document_id: number; system_template: string; user_template: string; few_shots: unknown[]; model_id?: number; settings: Partial<ChunkSettings>; params: Record<string, unknown> }) =>
+  updatePrompt: (id: string, description: string, doc_types: string[]) => put<Prompt>(`/api/prompts/${id}`, { description, doc_types }),
+  createVersion: (promptId: string, v: VersionInput) => post<PromptVersion>(`/api/prompts/${promptId}/versions`, v),
+  setVersionStatus: (versionId: string, status: string) => patch<PromptVersion>(`/api/prompts/versions/${versionId}/status`, { status }),
+  rollbackVersion: (versionId: string) => post<PromptVersion>(`/api/prompts/versions/${versionId}/rollback`),
+  forkVersion: (versionId: string, name: string) => post<Prompt>(`/api/prompts/versions/${versionId}/fork`, { name }),
+  previewPrompt: (body: { document_id: string; system_template: string; user_template: string; few_shots: unknown[]; model_id?: string; settings: Partial<ChunkSettings>; params: Record<string, unknown> }) =>
     post<PromptPreview>('/api/prompts/preview', body),
 
   // runs
-  startRun: (body: { document_id: number; method: string; prompt_version_id?: number; model_id?: number; params: Record<string, unknown>; settings: Partial<ChunkSettings> }) =>
+  startRun: (body: { document_id: string; method: string; prompt_version_id?: string; model_id?: string; params: Record<string, unknown>; settings: Partial<ChunkSettings> }) =>
     post<RunSummary>('/api/runs', body),
-  runs: (documentId?: number) => get<RunSummary[]>(`/api/runs${qs({ document_id: documentId })}`),
-  run: (id: number) => get<RunDetail>(`/api/runs/${id}`),
-  deleteRun: (id: number) => del(`/api/runs/${id}`),
-  feedback: (runId: number, chunkId: string, value: 'up' | 'down' | null) =>
+  runs: (documentId?: string) => get<RunSummary[]>(`/api/runs${qs({ document_id: documentId })}`),
+  run: (id: string) => get<RunDetail>(`/api/runs/${id}`),
+  deleteRun: (id: string) => del(`/api/runs/${id}`),
+  feedback: (runId: string, chunkId: string, value: 'up' | 'down' | null) =>
     post<RunDetail['feedback']>(`/api/runs/${runId}/feedback`, { chunk_id: chunkId, value }),
 }
 
@@ -118,51 +118,51 @@ export const DEFAULT_EMBED_TEMPLATE = '{title}\n{summary}\n\n{text}'
 export const vapi = {
   embeddingModels: (usableOnly = false) => get<EmbeddingModel[]>(`/api/embedding-models${qs({ usable_only: usableOnly })}`),
   createEmbeddingModel: (m: EmbeddingModelInput) => post<EmbeddingModel>('/api/embedding-models', m),
-  updateEmbeddingModel: (id: number, m: EmbeddingModelInput) => put<EmbeddingModel>(`/api/embedding-models/${id}`, m),
-  embeddingHealth: (id: number) => post<EmbeddingModel['last_health']>(`/api/embedding-models/${id}/health`),
+  updateEmbeddingModel: (id: string, m: EmbeddingModelInput) => put<EmbeddingModel>(`/api/embedding-models/${id}`, m),
+  embeddingHealth: (id: string) => post<EmbeddingModel['last_health']>(`/api/embedding-models/${id}/health`),
   rerankModels: (usableOnly = false) => get<RerankModel[]>(`/api/rerank-models${qs({ usable_only: usableOnly })}`),
   rerankMeta: () => get<{ providers: string[]; template_fields: string[] }>('/api/rerank-models/meta'),
   createRerankModel: (m: RerankModelInput) => post<RerankModel>('/api/rerank-models', m),
-  updateRerankModel: (id: number, m: RerankModelInput) => put<RerankModel>(`/api/rerank-models/${id}`, m),
-  deleteRerankModel: (id: number) => del(`/api/rerank-models/${id}`),
-  rerankHealth: (id: number) => post<RerankModel['last_health']>(`/api/rerank-models/${id}/health`),
+  updateRerankModel: (id: string, m: RerankModelInput) => put<RerankModel>(`/api/rerank-models/${id}`, m),
+  deleteRerankModel: (id: string) => del(`/api/rerank-models/${id}`),
+  rerankHealth: (id: string) => post<RerankModel['last_health']>(`/api/rerank-models/${id}/health`),
 
   vectorStores: () => get<VectorStore[]>('/api/vector-stores'),
   createVectorStore: (s: VectorStoreInput) => post<VectorStore>('/api/vector-stores', s),
-  updateVectorStore: (id: number, s: VectorStoreInput) => put<VectorStore>(`/api/vector-stores/${id}`, s),
-  createCollection: (storeId: number, c: CollectionInput) => post<VectorCollection>(`/api/vector-stores/${storeId}/collections`, c),
-  updateCollection: (id: number, c: CollectionInput) => put<VectorCollection>(`/api/vector-collections/${id}`, c),
-  deleteCollection: (id: number) => del(`/api/vector-collections/${id}`),
-  vectorStoreHealth: (id: number) => post<VectorStore['last_health']>(`/api/vector-stores/${id}/health`),
+  updateVectorStore: (id: string, s: VectorStoreInput) => put<VectorStore>(`/api/vector-stores/${id}`, s),
+  createCollection: (storeId: string, c: CollectionInput) => post<VectorCollection>(`/api/vector-stores/${storeId}/collections`, c),
+  updateCollection: (id: string, c: CollectionInput) => put<VectorCollection>(`/api/vector-collections/${id}`, c),
+  deleteCollection: (id: string) => del(`/api/vector-collections/${id}`),
+  vectorStoreHealth: (id: string) => post<VectorStore['last_health']>(`/api/vector-stores/${id}/health`),
 
   indexMeta: () => get<{ templates: { label: string; template: string }[]; template_fields: string[]; metrics: string[]; modes: string[] }>('/api/indexes/meta'),
   indexes: () => get<VectorIndex[]>('/api/indexes'),
-  index: (id: number) => get<VectorIndex>(`/api/indexes/${id}`),
+  index: (id: string) => get<VectorIndex>(`/api/indexes/${id}`),
   /** 저장소·컬렉션은 문서의 프로젝트 설정으로 정해진다(미분류는 기본 저장소) */
-  indexTarget: (q: { document_id?: number; project_id?: number }) => get<IndexTarget>(`/api/index-target${qs(q)}`),
-  createIndex: (body: { run_id: number; embedding_model_id: number; embed_template: string; metric: string }) =>
+  indexTarget: (q: { document_id?: string; project_id?: string }) => get<IndexTarget>(`/api/index-target${qs(q)}`),
+  createIndex: (body: { run_id: string; embedding_model_id: string; embed_template: string; metric: string }) =>
     post<VectorIndex>('/api/indexes', body),
-  appendRun: (id: number, runId: number) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
-  deleteIndex: (id: number, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
-  query: (id: number, body: { query: string; top_k: number; filter: string; principals?: string[] | null; rerank_model_id?: number | null; rerank_candidates?: number | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
+  appendRun: (id: string, runId: string) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
+  deleteIndex: (id: string, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
+  query: (id: string, body: { query: string; top_k: number; filter: string; principals?: string[] | null; rerank_model_id?: string | null; rerank_candidates?: number | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }
 
 export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'vector_collection_id' | 'meta' | 'permissions' | 'permission_mode'>
 
 export const papi = {
   projects: () => get<ProjectTree>('/api/projects'),
-  project: (id: number) => get<Project>(`/api/projects/${id}`),
+  project: (id: string) => get<Project>(`/api/projects/${id}`),
   createProject: (p: Partial<ProjectInput> & { name: string }) => post<Project>('/api/projects', p),
-  updateProject: (id: number, p: ProjectInput) => put<Project>(`/api/projects/${id}`, p),
-  deleteProject: (id: number, moveToParent: boolean) => del(`/api/projects/${id}${qs({ move_to_parent: moveToParent })}`),
-  runAll: (id: number, body: { include_descendants: boolean; only_without_run: boolean }) =>
-    post<{ run_ids: number[]; document_count: number; method: string }>(`/api/projects/${id}/run-all`, body),
-  indexPlan: (id: number, includeDescendants = true) =>
+  updateProject: (id: string, p: ProjectInput) => put<Project>(`/api/projects/${id}`, p),
+  deleteProject: (id: string, moveToParent: boolean) => del(`/api/projects/${id}${qs({ move_to_parent: moveToParent })}`),
+  runAll: (id: string, body: { include_descendants: boolean; only_without_run: boolean }) =>
+    post<{ run_ids: string[]; document_count: number; method: string }>(`/api/projects/${id}/run-all`, body),
+  indexPlan: (id: string, includeDescendants = true) =>
     get<IndexPlan>(`/api/projects/${id}/index-plan${qs({ include_descendants: includeDescendants })}`),
-  indexAll: (id: number, body: { embedding_model_id: number; embed_template: string; metric: string; mode: 'append' | 'recreate'; include_descendants: boolean }) =>
+  indexAll: (id: string, body: { embedding_model_id: string; embed_template: string; metric: string; mode: 'append' | 'recreate'; include_descendants: boolean }) =>
     post<{ indexes: VectorIndex[]; document_count: number; skipped: IndexPlan['skipped'] }>(`/api/projects/${id}/index-all`, body),
-  moveDocuments: (documentIds: number[], projectId: number | null) =>
+  moveDocuments: (documentIds: string[], projectId: string | null) =>
     post<{ moved: number }>('/api/documents/move', { document_ids: documentIds, project_id: projectId }),
-  patchDocument: (id: number, body: { title?: string; doc_type?: string; project_id?: number; clear_project?: boolean }) =>
+  patchDocument: (id: string, body: { title?: string; doc_type?: string; project_id?: string; clear_project?: boolean }) =>
     patch<DocumentSummary>(`/api/documents/${id}`, body),
 }

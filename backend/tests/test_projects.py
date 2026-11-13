@@ -100,4 +100,4 @@ def test_ingest_into_project(client):
                                          "project_id": p["id"]}).json()
     assert d["project_id"] == p["id"]
     assert client.post("/api/ingest", json={"parser_id": parser["id"], "title": "t", "payload": payload,
-                                            "project_id": 99999}).status_code == 404
+                                            "project_id": "0193a8c2-0000-7000-8000-00000000ffff"}).status_code == 404

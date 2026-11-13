@@ -13,14 +13,14 @@ PROFILE_FIELDS = ("method", "prompt_id", "prompt_version_id", "model_id", "param
                   "vector_collection_id")
 
 
-def load_tree(db: Session) -> dict[int, Project]:
+def load_tree(db: Session) -> dict[str, Project]:
     return {p.id: p for p in db.scalars(select(Project))}
 
 
-def ancestors(tree: dict[int, Project], project_id: int | None) -> list[Project]:
+def ancestors(tree: dict[str, Project], project_id: str | None) -> list[Project]:
     """자기 자신부터 루트까지 (순환 방지)."""
     chain: list[Project] = []
-    seen: set[int] = set()
+    seen: set[str] = set()
     cur = tree.get(project_id) if project_id else None
     while cur is not None and cur.id not in seen:
         chain.append(cur)
@@ -29,12 +29,12 @@ def ancestors(tree: dict[int, Project], project_id: int | None) -> list[Project]
     return chain
 
 
-def descendant_ids(tree: dict[int, Project], project_id: int) -> set[int]:
+def descendant_ids(tree: dict[str, Project], project_id: str) -> set[str]:
     """자기 자신 포함 하위 전체."""
-    children: dict[int | None, list[int]] = {}
+    children: dict[str | None, list[str]] = {}
     for p in tree.values():
         children.setdefault(p.parent_id, []).append(p.id)
-    out: set[int] = set()
+    out: set[str] = set()
     stack = [project_id]
     while stack:
         pid = stack.pop()
@@ -45,17 +45,17 @@ def descendant_ids(tree: dict[int, Project], project_id: int) -> set[int]:
     return out
 
 
-def would_cycle(tree: dict[int, Project], project_id: int, new_parent_id: int | None) -> bool:
+def would_cycle(tree: dict[str, Project], project_id: str, new_parent_id: str | None) -> bool:
     if new_parent_id is None:
         return False
     return new_parent_id in descendant_ids(tree, project_id)
 
 
-def path_names(tree: dict[int, Project], project_id: int | None) -> list[str]:
+def path_names(tree: dict[str, Project], project_id: str | None) -> list[str]:
     return [p.name for p in reversed(ancestors(tree, project_id))]
 
 
-def effective_profile(tree: dict[int, Project], project_id: int | None) -> dict[str, Any]:
+def effective_profile(tree: dict[str, Project], project_id: str | None) -> dict[str, Any]:
     """필드마다 가장 가까운 상위에서 값을 찾는다. sources: 필드 → 값을 준 프로젝트 id."""
     profile: dict[str, Any] = {f: None for f in PROFILE_FIELDS}
     sources: dict[str, int] = {}
@@ -74,7 +74,7 @@ def effective_profile(tree: dict[int, Project], project_id: int | None) -> dict[
     return profile
 
 
-def resolve_prompt_version(db: Session, prompt_id: int | None, prompt_version_id: int | None) -> PromptVersion | None:
+def resolve_prompt_version(db: Session, prompt_id: str | None, prompt_version_id: str | None) -> PromptVersion | None:
     """고정 버전 → 운영(production) 버전 → 최신 버전 순."""
     if prompt_version_id:
         pv = db.get(PromptVersion, prompt_version_id)
@@ -89,7 +89,7 @@ def resolve_prompt_version(db: Session, prompt_id: int | None, prompt_version_id
     return prod[-1] if prod else prompt.versions[-1]
 
 
-def project_run_profile(db: Session, tree: dict[int, Project], project_id: int | None) -> dict[str, Any]:
+def project_run_profile(db: Session, tree: dict[str, Project], project_id: str | None) -> dict[str, Any]:
     """프로젝트(상위 상속) 청킹 프로파일을 청킹 실행 인자로 바꾼다. 설정이 부족하면 ValueError."""
     if project_id is None or project_id not in tree:
         raise ValueError("미분류 문서입니다. 프로젝트에 넣거나 method·model_id·prompt_version_id를 직접 지정하세요")
@@ -116,7 +116,7 @@ def default_collection(db: Session) -> VectorCollection | None:
     return db.scalar(select(VectorCollection).where(VectorCollection.is_default.is_(True)).order_by(VectorCollection.id))
 
 
-def resolve_collection(db: Session, tree: dict[int, Project], project_id: int | None,
+def resolve_collection(db: Session, tree: dict[str, Project], project_id: str | None,
                        default: VectorCollection | None = None) -> tuple[VectorCollection | None, dict[str, Any]]:
     """문서(프로젝트)가 적재될 컬렉션: 프로젝트(상위 상속) 지정 → 없으면 기본 컬렉션.
 
@@ -172,7 +172,7 @@ def validate_meta(meta: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def effective_access(tree: dict[int, Project], project_id: int | None) -> dict[str, Any]:
+def effective_access(tree: dict[str, Project], project_id: str | None) -> dict[str, Any]:
     """루트 → 자신 순서로 메타데이터를 병합하고 권한을 계산한다.
 
     반환: meta, meta_sources(키 → 프로젝트 id), permissions(정렬), permission_sources(주체 → 프로젝트 id),

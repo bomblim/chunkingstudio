@@ -7,9 +7,9 @@ const EMPTY: VectorStoreInput = { name: '', kind: 'milvus', uri: 'http://localho
 
 export default function VectorStoresPage() {
   const stores = useAsync(() => vapi.vectorStores(), [])
-  const [edit, setEdit] = useState<{ id?: number; data: VectorStoreInput } | null>(null)
+  const [edit, setEdit] = useState<{ id?: string; data: VectorStoreInput } | null>(null)
   const [collEdit, setCollEdit] = useState<{ store: VectorStore; coll?: VectorCollection } | null>(null)
-  const [busy, setBusy] = useState<number>()
+  const [busy, setBusy] = useState<string>()
   const [error, setError] = useState('')
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -101,7 +101,7 @@ export default function VectorStoresPage() {
   )
 }
 
-function StoreForm({ initial, id, hasDefault, onClose, onSaved }: { initial: VectorStoreInput; id?: number; hasDefault: boolean; onClose: () => void; onSaved: () => void }) {
+function StoreForm({ initial, id, hasDefault, onClose, onSaved }: { initial: VectorStoreInput; id?: string; hasDefault: boolean; onClose: () => void; onSaved: () => void }) {
   const [d, setD] = useState<VectorStoreInput>(initial)
   const [error, setError] = useState('')
   const set = <K extends keyof VectorStoreInput>(k: K, v: VectorStoreInput[K]) => setD((x) => ({ ...x, [k]: v }))

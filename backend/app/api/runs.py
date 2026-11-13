@@ -21,11 +21,11 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 class RunIn(BaseModel):
-    document_id: int
+    document_id: str
     # llm | rule_structure. 생략하면 문서가 속한 프로젝트(상위 상속)의 청킹 프로파일을 쓴다.
     method: str | None = None
-    prompt_version_id: int | None = None
-    model_id: int | None = None
+    prompt_version_id: str | None = None
+    model_id: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     settings: dict[str, Any] = Field(default_factory=dict)
 
@@ -50,8 +50,8 @@ def create_run(
     db: Session,
     document: Document,
     method: str,
-    prompt_version_id: int | None,
-    model_id: int | None,
+    prompt_version_id: str | None,
+    model_id: str | None,
     params: dict[str, Any],
     settings: dict[str, Any],
     extra_snapshot: dict[str, Any] | None = None,
@@ -100,7 +100,7 @@ def start_run(body: RunIn, background: BackgroundTasks, db: Session = Depends(ge
 
 
 @router.get("")
-def list_runs(document_id: int | None = None, limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+def list_runs(document_id: str | None = None, limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     stmt = select(ChunkRun).order_by(ChunkRun.id.desc()).limit(limit)
     if document_id:
         stmt = stmt.where(ChunkRun.document_id == document_id)
@@ -108,7 +108,7 @@ def list_runs(document_id: int | None = None, limit: int = 50, db: Session = Dep
 
 
 @router.get("/{run_id}")
-def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_run(run_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     r = get_or_404(db, ChunkRun, run_id)
     d = row_dict(r)
     d.update({k: v for k, v in _summary(r).items() if k in {"model_name", "prompt_label", "prompt_id"}})
@@ -116,7 +116,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.post("/{run_id}/feedback")
-def feedback(run_id: int, body: FeedbackIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+def feedback(run_id: str, body: FeedbackIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     r = get_or_404(db, ChunkRun, run_id)
     fb = dict(r.feedback or {})
     if body.value is None:
@@ -131,7 +131,7 @@ def feedback(run_id: int, body: FeedbackIn, db: Session = Depends(get_db)) -> di
 
 
 @router.delete("/{run_id}", status_code=204)
-def delete_run(run_id: int, db: Session = Depends(get_db)) -> None:
+def delete_run(run_id: str, db: Session = Depends(get_db)) -> None:
     db.delete(get_or_404(db, ChunkRun, run_id))
     db.commit()
 

@@ -4,7 +4,7 @@ import { api, papi } from '../api'
 import { chunkColor } from '../colors'
 import { TableView } from '../components/ElementViews'
 import { TemplateEditor } from '../components/TemplateEditor'
-import { Badge, ErrorBanner, Histogram, Stat, StatusBadge, Tabs, fmtDate, useAsync, usePolling } from '../components/ui'
+import { Badge, ErrorBanner, Histogram, Stat, StatusBadge, Tabs, fmtDate, useAsync, usePolling, shortId, Sid } from '../components/ui'
 import type { Chunk, ChunkSettings, DocElement, Issue, PromptPreview, PromptVersion, RunDetail } from '../types'
 
 const DEFAULT_SETTINGS: ChunkSettings = {
@@ -17,9 +17,9 @@ type BottomTab = 'windows' | 'preview' | 'history' | 'snapshot'
 
 export default function PlaygroundPage() {
   const [sp, setSp] = useSearchParams()
-  const docId = Number(sp.get('doc')) || undefined
-  const runId = Number(sp.get('run')) || undefined
-  const setParam = (k: string, v?: number) => setSp((p) => { const n = new URLSearchParams(p); if (v) n.set(k, String(v)); else n.delete(k); return n }, { replace: true })
+  const docId = sp.get('doc') || undefined
+  const runId = sp.get('run') || undefined
+  const setParam = (k: string, v?: string) => setSp((p) => { const n = new URLSearchParams(p); if (v) n.set(k, String(v)); else n.delete(k); return n }, { replace: true })
 
   const docs = useAsync(() => api.documents(), [])
   const doc = useAsync(() => (docId ? api.document(docId) : Promise.resolve(undefined)), [docId])
@@ -29,13 +29,13 @@ export default function PlaygroundPage() {
   const runs = useAsync(() => (docId ? api.runs(docId) : Promise.resolve([])), [docId])
 
   // ---------------------------------------------------------------- 설정 상태
-  const [promptId, setPromptId] = useState<number>()
-  const [versionId, setVersionId] = useState<number>()
+  const [promptId, setPromptId] = useState<string>()
+  const [versionId, setVersionId] = useState<string>()
   const [system, setSystem] = useState('')
   const [user, setUser] = useState('')
   const [fewShots, setFewShots] = useState('[]')
   const [note, setNote] = useState('')
-  const [modelId, setModelId] = useState<number>()
+  const [modelId, setModelId] = useState<string>()
   const [method, setMethod] = useState<'llm' | 'rule_structure'>('llm')
   const [params, setParams] = useState<{ temperature?: number; top_p?: number; max_tokens?: number; seed?: number; effort?: string }>({ temperature: 0 })
   const [settings, setSettings] = useState<ChunkSettings>(DEFAULT_SETTINGS)
@@ -74,7 +74,7 @@ export default function PlaygroundPage() {
   // ---------------------------------------------------------------- 프로젝트 청킹 프로파일
   const projectId = doc.data?.project_id ?? null
   const project = useAsync(() => (projectId ? papi.project(projectId) : Promise.resolve(undefined)), [projectId])
-  const [appliedFor, setAppliedFor] = useState<number>()
+  const [appliedFor, setAppliedFor] = useState<string>()
   const [projectNotice, setProjectNotice] = useState('')
   useEffect(() => {
     // 문서를 바꿀 때마다 한 번, 문서가 속한 프로젝트의 (상속 포함) 프로파일을 기본값으로 적용
@@ -146,7 +146,7 @@ export default function PlaygroundPage() {
     }
   }
 
-  const saveVersion = async (): Promise<number | undefined> => {
+  const saveVersion = async (): Promise<string | undefined> => {
     if (!prompt || !version) return
     const shots = fewShotsParsed()
     if (!shots) { setError('Few-shot은 [{"input": "...", "output": {...}}] 형식의 JSON 배열이어야 합니다'); return }
@@ -203,8 +203,8 @@ export default function PlaygroundPage() {
           <p>문서를 청킹하고, 프롬프트를 바꿔 가며 LLM이 정한 청크 경계를 원문 위에서 확인합니다. LLM은 Element ID 범위만 반환하고, 청크 본문은 원본 Element로 조립됩니다.</p>
         </div>
         <label className="field" style={{ minWidth: 280 }}>문서
-          <select value={docId ?? ''} onChange={(e) => { setParam('run'); setParam('doc', Number(e.target.value)) }}>
-            {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.project_path?.length ? `[${d.project_path.join(' / ')}] ` : ''}{d.title} (#{d.id}, {d.stats.element_count}개)</option>)}
+          <select value={docId ?? ''} onChange={(e) => { setParam('run'); setParam('doc', e.target.value) }}>
+            {docs.data?.map((d) => <option key={d.id} value={d.id}>{d.project_path?.length ? `[${d.project_path.join(' / ')}] ` : ''}{d.title} ({shortId(d.id)}, {d.stats.element_count}개)</option>)}
           </select>
         </label>
       </div>
@@ -231,12 +231,12 @@ export default function PlaygroundPage() {
             <>
               <div className="row">
                 <label className="field grow">프롬프트
-                  <select value={promptId ?? ''} onChange={(e) => { setPromptId(Number(e.target.value)); setVersionId(undefined) }}>
+                  <select value={promptId ?? ''} onChange={(e) => { setPromptId(e.target.value); setVersionId(undefined) }}>
                     {prompts.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
                 <label className="field">버전
-                  <select value={versionId ?? ''} onChange={(e) => setVersionId(Number(e.target.value))}>
+                  <select value={versionId ?? ''} onChange={(e) => setVersionId(e.target.value)}>
                     {prompt?.versions.map((v) => <option key={v.id} value={v.id}>v{v.version} · {v.status}</option>)}
                   </select>
                 </label>
@@ -255,7 +255,7 @@ export default function PlaygroundPage() {
               </div>
               <hr style={{ border: 0, borderTop: '1px solid var(--border)', width: '100%' }} />
               <label className="field">모델
-                <select value={modelId ?? ''} onChange={(e) => setModelId(Number(e.target.value))}>
+                <select value={modelId ?? ''} onChange={(e) => setModelId(e.target.value)}>
                   {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name} · {m.engine || m.provider}{m.is_external ? ' (외부)' : ''}</option>)}
                 </select>
               </label>
@@ -330,7 +330,7 @@ export default function PlaygroundPage() {
 
         {/* ------------------------------------------------ 가운데: 문서 뷰 */}
         <section className="pg-pane" aria-label="청크 경계 문서 뷰">
-          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 #{run.id}</span>}{run?.status === 'done' && <Link to={`/indexes?run=${run.id}`} className="small" style={{ marginLeft: 'auto' }}>벡터 DB 적재 →</Link>}</h3>
+          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 <Sid id={run.id} /></span>}{run?.status === 'done' && <Link to={`/indexes?run=${run.id}`} className="small" style={{ marginLeft: 'auto' }}>벡터 DB 적재 →</Link>}</h3>
           {active && <ProgressBar run={run} />}
           {run?.status === 'failed' && <div className="banner err"><pre>{run.error}</pre></div>}
           <ChunkedDocument elements={elements} run={run} />
@@ -367,7 +367,7 @@ export default function PlaygroundPage() {
             <tbody>
               {runs.data?.map((r) => (
                 <tr key={r.id} className="clickable" onClick={() => setParam('run', r.id)} style={r.id === runId ? { background: 'var(--accent-soft)' } : undefined}>
-                  <td>{r.id}</td>
+                  <td><Sid id={r.id} /></td>
                   <td>{r.method === 'llm' ? 'LLM' : '규칙'}</td>
                   <td>{r.prompt_label}</td>
                   <td>{r.model_name}</td>

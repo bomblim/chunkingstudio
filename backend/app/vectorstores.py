@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .config import settings
+from .ids import is_uuid
 from .models import VectorStore
 
 # Milvus VARCHAR 최대 길이(바이트). 한글은 UTF-8로 3바이트라 약 2만 자까지 들어간다.
@@ -45,11 +46,24 @@ class Store(Protocol):
     def drop_collection(self, name: str) -> None: ...
     def describe(self, name: str) -> dict[str, Any]: ...
     def insert(self, name: str, rows: list[dict[str, Any]]) -> int: ...
-    def delete_by_run(self, name: str, run_id: int) -> None: ...
-    def delete_by_document(self, name: str, document_id: int) -> None: ...
+    def delete_by_run(self, name: str, run_id: str) -> None: ...
+    def delete_by_document(self, name: str, document_id: str) -> None: ...
     def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
                principals: list[str] | None = None) -> list[SearchHit]: ...
     def count(self, name: str) -> int: ...
+
+
+def _type_name(t: Any) -> str:
+    """pymilvus 필드 타입(DataType enum 또는 이름 문자열)을 이름으로"""
+    name = getattr(t, "name", None)
+    return (name or str(t or "")).upper()
+
+
+def _uuid_literal(value: str) -> str:
+    """필터식에 넣을 ID. UUID 형식만 허용해 필터식 주입을 막는다."""
+    if not is_uuid(value):
+        raise VectorStoreError(f"잘못된 ID 형식입니다: {value!r}")
+    return value
 
 
 def validate_collection_name(name: str) -> None:
@@ -122,7 +136,7 @@ def tls_kwargs(uri: str, ca_path: str = "", server_name: str = "") -> dict[str, 
     return kwargs
 
 
-_CLIENTS: dict[int, tuple[tuple, Any]] = {}  # 저장소 id -> (접속 설정 fingerprint, MilvusClient)
+_CLIENTS: dict[str, tuple[tuple, Any]] = {}  # 저장소 id -> (접속 설정 fingerprint, MilvusClient)
 _CLIENTS_LOCK = threading.Lock()
 
 
@@ -202,8 +216,8 @@ class MilvusStore:
         schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=128)
         schema.add_field("vector", DataType.FLOAT_VECTOR, dim=dim)
         schema.add_field("chunk_id", DataType.VARCHAR, max_length=64)
-        schema.add_field("run_id", DataType.INT64)
-        schema.add_field("document_id", DataType.INT64)
+        schema.add_field("run_id", DataType.VARCHAR, max_length=64)  # UUID
+        schema.add_field("document_id", DataType.VARCHAR, max_length=64)
         schema.add_field("title", DataType.VARCHAR, max_length=2048)
         schema.add_field("section_path", DataType.VARCHAR, max_length=4096)
         schema.add_field("text", DataType.VARCHAR, max_length=VARCHAR_MAX)
@@ -229,8 +243,11 @@ class MilvusStore:
             metric = idx.get("metric_type")
         except Exception:
             pass
+        run_field = next((f for f in info.get("fields", []) if f.get("name") == "run_id"), {})
         return {"dimension": int(dim) if dim else None, "metric": metric,
-                "fields": [f.get("name") for f in info.get("fields", [])]}
+                "fields": [f.get("name") for f in info.get("fields", [])],
+                # UUID 전환 이전에 만든 컬렉션은 run_id·document_id가 정수(INT64)라 새 ID를 넣을 수 없다
+                "legacy_int_ids": _type_name(run_field.get("type")) == "INT64"}
 
     def insert(self, name: str, rows: list[dict[str, Any]]) -> int:
         total = 0
@@ -240,11 +257,11 @@ class MilvusStore:
         self._call(self.client.flush, name)
         return total
 
-    def delete_by_run(self, name: str, run_id: int) -> None:
-        self._call(self.client.delete, collection_name=name, filter=f"run_id == {int(run_id)}")
+    def delete_by_run(self, name: str, run_id: str) -> None:
+        self._call(self.client.delete, collection_name=name, filter=f'run_id == "{_uuid_literal(run_id)}"')
 
-    def delete_by_document(self, name: str, document_id: int) -> None:
-        self._call(self.client.delete, collection_name=name, filter=f"document_id == {int(document_id)}")
+    def delete_by_document(self, name: str, document_id: str) -> None:
+        self._call(self.client.delete, collection_name=name, filter=f'document_id == "{_uuid_literal(document_id)}"')
 
     def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
                principals: list[str] | None = None) -> list[SearchHit]:
@@ -312,12 +329,12 @@ class MemoryStore:
         self._save(name, d)
         return len(rows)
 
-    def delete_by_run(self, name: str, run_id: int) -> None:
+    def delete_by_run(self, name: str, run_id: str) -> None:
         d = self._load(name)
         d["rows"] = {k: v for k, v in d["rows"].items() if v.get("run_id") != run_id}
         self._save(name, d)
 
-    def delete_by_document(self, name: str, document_id: int) -> None:
+    def delete_by_document(self, name: str, document_id: str) -> None:
         d = self._load(name)
         d["rows"] = {k: v for k, v in d["rows"].items() if v.get("document_id") != document_id}
         self._save(name, d)
