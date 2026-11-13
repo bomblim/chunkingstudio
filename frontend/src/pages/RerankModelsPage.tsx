@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { vapi, type RerankModelInput } from '../api'
-import { Badge, ErrorBanner, Modal, useAsync } from '../components/ui'
+import { askConfirm, Badge, ErrorBanner, Modal, useAsync } from '../components/ui'
 import type { RerankModel } from '../types'
 
 const EMPTY: RerankModelInput = {
@@ -27,7 +27,7 @@ export default function RerankModelsPage() {
   const [error, setError] = useState('')
 
   const remove = async (m: RerankModel) => {
-    if (!confirm(`'${m.name}' 리랭크 모델을 삭제할까요?`)) return
+    if (!(await askConfirm(`'${m.name}' 리랭크 모델을 삭제할까요?`, { title: '리랭크 모델 삭제', confirmLabel: '삭제', danger: true }))) return
     setError('')
     try { await vapi.deleteRerankModel(m.id); void models.reload() } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   }

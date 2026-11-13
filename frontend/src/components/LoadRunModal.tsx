@@ -32,7 +32,7 @@ function useRunPicker(presetRun?: string) {
         <select value={runId ?? ''} onChange={(e) => setRunId(e.target.value)}>
           {doneRuns.map((r) => <option key={r.id} value={r.id}>{shortId(r.id)} · {r.method === 'llm' ? `LLM ${r.prompt_label} · ${r.model_name}` : '규칙 baseline'} · 청크 {r.totals.chunk_count}개 · {fmtDate(r.created_at)}</option>)}
         </select>
-        {runs.data && !doneRuns.length && <span className="small" style={{ color: 'var(--warn)' }}>완료된 청킹 실행이 없습니다. <Link to={`/playground?doc=${docId}`}>청킹 화면에서 실행 →</Link></span>}
+        {docId && !runs.loading && runs.data && !doneRuns.length && <span className="small" style={{ color: 'var(--warn)' }}>완료된 청킹 실행이 없습니다. <Link to={`/playground?doc=${docId}`}>청킹 화면에서 실행 →</Link></span>}
       </label>
     </div>
   )

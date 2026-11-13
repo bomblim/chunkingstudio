@@ -136,6 +136,65 @@ export function ConfirmModal({ title, children, confirmLabel = '확인', danger,
   )
 }
 
+/* ------------------------------------------------------------------
+ * 브라우저 기본 대화상자(confirm/prompt) 대체.
+ * 일부 내장 브라우저·웹뷰는 window.confirm을 띄우지 않고 바로 false를 돌려줘
+ * 삭제 같은 버튼이 아무 반응 없이 끝난다. 그래서 레이어 팝업으로 묻는다.
+ * 사용: if (!(await askConfirm('삭제할까요?', { danger: true }))) return
+ * DialogHost를 앱 루트에 한 번 둔다.
+ */
+type DialogReq = {
+  kind: 'confirm' | 'text'
+  title: string
+  message: ReactNode
+  confirmLabel: string
+  danger: boolean
+  defaultValue: string
+  resolve: (v: boolean | string | null) => void
+}
+let pushDialog: ((r: DialogReq) => void) | null = null
+
+export function askConfirm(message: ReactNode, opts: { title?: string; confirmLabel?: string; danger?: boolean } = {}): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!pushDialog) { resolve(false); return }
+    pushDialog({ kind: 'confirm', title: opts.title ?? '확인', message, confirmLabel: opts.confirmLabel ?? '확인',
+      danger: !!opts.danger, defaultValue: '', resolve: (v) => resolve(v === true) })
+  })
+}
+
+export function askText(message: ReactNode, defaultValue = '', opts: { title?: string; confirmLabel?: string } = {}): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!pushDialog) { resolve(null); return }
+    pushDialog({ kind: 'text', title: opts.title ?? '입력', message, confirmLabel: opts.confirmLabel ?? '확인',
+      danger: false, defaultValue, resolve: (v) => resolve(typeof v === 'string' ? v : null) })
+  })
+}
+
+export function DialogHost() {
+  const [queue, setQueue] = useState<DialogReq[]>([])
+  const [text, setText] = useState('')
+  useEffect(() => {
+    pushDialog = (r) => setQueue((q) => [...q, r])
+    return () => { pushDialog = null }
+  }, [])
+  const cur = queue[0]
+  useEffect(() => { if (cur) setText(cur.defaultValue) }, [cur])
+  if (!cur) return null
+  const finish = (v: boolean | string | null) => { cur.resolve(v); setQueue((q) => q.slice(1)) }
+  const ok = () => finish(cur.kind === 'text' ? text : true)
+  return (
+    <Modal title={cur.title} onClose={() => finish(cur.kind === 'text' ? null : false)}
+      footer={<><button onClick={() => finish(cur.kind === 'text' ? null : false)}>취소</button>
+        <button className={cur.danger ? 'danger' : 'primary'} autoFocus={cur.kind === 'confirm'} onClick={ok}>{cur.confirmLabel}</button></>}>
+      <div style={{ whiteSpace: 'pre-wrap' }}>{cur.message}</div>
+      {cur.kind === 'text' && (
+        <input autoFocus style={{ width: '100%', marginTop: 8 }} value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') ok() }} />
+      )}
+    </Modal>
+  )
+}
+
 /** 다른 탭·창에서 돌아오면(포커스) fn을 다시 실행한다. 다른 화면에서 바꾼 수치가 남아 보이지 않도록 */
 export function useRefreshOnFocus(fn: () => void) {
   const ref = useRef(fn)

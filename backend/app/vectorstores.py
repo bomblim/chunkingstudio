@@ -277,8 +277,12 @@ class MilvusStore:
         return hits
 
     def count(self, name: str) -> int:
-        stats = self._call(self.client.get_collection_stats, name)
-        return int(stats.get("row_count", 0))
+        # get_collection_stats의 row_count는 삭제된 행을 compaction 전까지 계속 세므로
+        # (같은 문서 재적재 때 수치가 불어남) 삭제를 반영하는 count(*) 질의로 센다
+        self._call(self.client.load_collection, name)
+        res = self._call(self.client.query, collection_name=name, filter="", output_fields=["count(*)"],
+                         consistency_level="Strong")
+        return int(res[0].get("count(*)", 0)) if res else 0
 
     def browse(self, name: str, document_id: str | None, limit: int, offset: int) -> tuple[list[dict[str, Any]], int]:
         """질의 없이 저장된 청크를 훑어본다(저장 순서와 무관, 페이지 단위)."""
@@ -290,7 +294,8 @@ class MilvusStore:
             expr = f'document_id == "{_uuid_literal(document_id)}"'
         else:
             expr = 'id != ""'
-        total = self._call(self.client.query, collection_name=name, filter=expr, output_fields=["count(*)"])
+        total = self._call(self.client.query, collection_name=name, filter=expr, output_fields=["count(*)"],
+                           consistency_level="Strong")
         total_n = int(total[0].get("count(*)", 0)) if total else 0
         rows = self._call(self.client.query, collection_name=name, filter=expr,
                           output_fields=["id", *SCALAR_FIELDS], limit=limit, offset=offset)

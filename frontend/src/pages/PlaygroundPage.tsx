@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, papi } from '../api'
+import { api, papi, vapi } from '../api'
 import { chunkColor } from '../colors'
 import { TableView } from '../components/ElementViews'
 import { LoadRunModal } from '../components/LoadRunModal'
 import { TemplateEditor } from '../components/TemplateEditor'
-import { Badge, ErrorBanner, Histogram, Stat, StatusBadge, Tabs, fmtDate, useAsync, usePolling, shortId, Sid } from '../components/ui'
-import type { Chunk, ChunkSettings, DocElement, Issue, PromptPreview, PromptVersion, RunDetail } from '../types'
+import { askConfirm, Badge, ErrorBanner, Histogram, Stat, StatusBadge, Tabs, fmtDate, useAsync, usePolling, shortId, Sid } from '../components/ui'
+import type { Chunk, ChunkSettings, DocElement, Issue, PromptPreview, PromptVersion, RunDetail, VectorIndex } from '../types'
 
 const DEFAULT_SETTINGS: ChunkSettings = {
   max_tokens: 512, min_tokens: 64, window_tokens: null, exclude_types: ['header', 'footer'],
@@ -78,7 +78,10 @@ export default function PlaygroundPage() {
   const [appliedFor, setAppliedFor] = useState<string>()
   const [projectNotice, setProjectNotice] = useState('')
   const [loadOpen, setLoadOpen] = useState(false)
-  const [loadNotice, setLoadNotice] = useState('')
+  // 적재 진행 상황: 버튼 옆에 바로 보여 준다(완료·실패·청크 수)
+  const [loadIx, setLoadIx] = useState<VectorIndex | null>(null)
+  const loadLive = loadIx?.status === 'queued' || loadIx?.status === 'running'
+  usePolling(async () => { if (loadIx) setLoadIx(await vapi.index(loadIx.id)) }, loadLive, 1000)
   useEffect(() => {
     // 문서를 바꿀 때마다 한 번, 문서가 속한 프로젝트의 (상속 포함) 프로파일을 기본값으로 적용
     const p = project.data
@@ -96,7 +99,7 @@ export default function PlaygroundPage() {
   const saveToProject = async () => {
     const p = project.data
     if (!p) return
-    if (!confirm(`현재 설정을 '${p.path.join(' / ')}' 프로젝트의 청킹 프로파일로 저장할까요?\n하위 프로젝트 중 따로 지정하지 않은 곳에도 적용됩니다.`)) return
+    if (!(await askConfirm(`현재 설정을 '${p.path.join(' / ')}' 프로젝트의 청킹 프로파일로 저장할까요?\n하위 프로젝트 중 따로 지정하지 않은 곳에도 적용됩니다.`, { title: '프로젝트 프로파일 저장', confirmLabel: '저장' }))) return
     setError('')
     try {
       await papi.updateProject(p.id, {
@@ -212,7 +215,6 @@ export default function PlaygroundPage() {
         </label>
       </div>
       <ErrorBanner error={error || doc.error || prompts.error || models.error} />
-      {loadNotice && <div className="banner info">{loadNotice} <Link to="/indexes">질의 테스트에서 확인 →</Link></div>}
 
       <div className="pg">
         {/* ------------------------------------------------ 왼쪽: 프롬프트·모델·설정 */}
@@ -334,7 +336,14 @@ export default function PlaygroundPage() {
 
         {/* ------------------------------------------------ 가운데: 문서 뷰 */}
         <section className="pg-pane" aria-label="청크 경계 문서 뷰">
-          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 <Sid id={run.id} /></span>}{run?.status === 'done' && <button className="sm" style={{ marginLeft: 'auto' }} onClick={() => setLoadOpen(true)}>벡터 DB 적재</button>}</h3>
+          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 <Sid id={run.id} /></span>}{run?.status === 'done' && <button className="sm" style={{ marginLeft: 'auto' }} disabled={loadLive} onClick={() => setLoadOpen(true)}>{loadLive ? '적재 중…' : '벡터 DB 적재'}</button>}</h3>
+          {loadIx && (
+            <div className={`banner ${loadIx.status === 'failed' ? 'err' : 'info'} small`} style={{ margin: '0 0 8px' }}>
+              <b>{loadIx.store_name} / {loadIx.collection}</b>{' '}
+              {loadLive ? '적재 중…' : loadIx.status === 'done' ? <>적재 완료 · 컬렉션 청크 {loadIx.chunk_count}개 · <Link to="/storage">저장소에서 보기</Link> · <Link to="/indexes">질의 테스트</Link></> : <>적재 실패: {loadIx.error}</>}
+              <button className="sm ghost" style={{ marginLeft: 8 }} onClick={() => setLoadIx(null)} aria-label="닫기">✕</button>
+            </div>
+          )}
           {active && <ProgressBar run={run} />}
           {run?.status === 'failed' && <div className="banner err"><pre>{run.error}</pre></div>}
           <ChunkedDocument elements={elements} run={run} />
@@ -392,7 +401,7 @@ export default function PlaygroundPage() {
         {bottom === 'snapshot' && (run ? <pre className="code-box">{JSON.stringify({ snapshot: run.snapshot, params: run.params, settings: run.settings }, null, 2)}</pre> : <div className="muted">실행을 선택하세요</div>)}
       </div>
       {loadOpen && run && <LoadRunModal presetRun={run.id} onClose={() => setLoadOpen(false)}
-        onCreated={(ix) => { setLoadOpen(false); setLoadNotice(`'${ix.store_name} / ${ix.collection}'에 적재를 시작했습니다.`) }} />}
+        onCreated={(ix) => { setLoadOpen(false); setLoadIx(ix) }} />}
     </>
   )
 }

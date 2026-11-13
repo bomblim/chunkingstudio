@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, kapi } from '../api'
-import { Badge, ErrorBanner, Modal, fmtDate, useAsync } from '../components/ui'
+import { askConfirm, Badge, ErrorBanner, Modal, fmtDate, useAsync } from '../components/ui'
 import type { ApiKey } from '../types'
 
 /** 외부 시스템용 파이프라인 API 안내: 업로드 → 파싱 → 청킹 → 적재 (curl 예시) */
@@ -266,7 +266,7 @@ function ApiKeysModal({ onClose }: { onClose: () => void }) {
     }
   }
   const remove = async (k: ApiKey) => {
-    if (!confirm(`'${k.name}' 키(${k.prefix}…)를 삭제할까요?\n이 키를 쓰는 외부 시스템은 바로 호출할 수 없게 됩니다.`)) return
+    if (!(await askConfirm(`'${k.name}' 키(${k.prefix}…)를 삭제할까요?\n이 키를 쓰는 외부 시스템은 바로 호출할 수 없게 됩니다.`, { title: 'API 키 삭제', confirmLabel: '삭제', danger: true }))) return
     setError('')
     try {
       await kapi.deleteApiKey(k.id)

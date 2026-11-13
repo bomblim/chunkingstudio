@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DEFAULT_EMBED_TEMPLATE, api, papi, vapi } from '../api'
 import { ProjectSettingsModal } from '../components/ProjectSettings'
 import { ProjectTreeView, projectOptions, type ProjectSelection, isProjectId } from '../components/ProjectTree'
-import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling, shortId } from '../components/ui'
+import { askConfirm, Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling, shortId } from '../components/ui'
 import type { ParseJob, Project, VectorIndex } from '../types'
 
 function parseSelection(v: string | null): ProjectSelection {
@@ -57,7 +57,7 @@ export default function DocumentsPage() {
     if (!current) return
     const eff = current.effective
     const desc = eff.method === 'rule_structure' ? '규칙 baseline' : `${eff.resolved_prompt_label ?? '?'} · ${eff.model_name ?? '?'}`
-    if (!confirm(`'${current.path.join(' / ')}'의 문서 ${current.total_doc_count}개를 청킹합니다 (하위 포함).\n프로파일: ${desc}\nLLM 호출 비용이 발생할 수 있습니다. 진행할까요?`)) return
+    if (!(await askConfirm(`'${current.path.join(' / ')}'의 문서 ${current.total_doc_count}개를 청킹합니다 (하위 포함).\n프로파일: ${desc}\nLLM 호출 비용이 발생할 수 있습니다. 진행할까요?`, { title: '일괄 청킹', confirmLabel: '청킹 시작' }))) return
     const r = await papi.runAll(current.id, { include_descendants: true, only_without_run: false })
     setNotice(`${r.document_count}개 문서 청킹을 시작했습니다 (순차 실행). 진행 상황은 아래 "최근 청킹" 열에서 확인하세요.`)
     void docs.reload()
@@ -67,8 +67,8 @@ export default function DocumentsPage() {
     if (!current) return
     const hasContent = current.total_doc_count > 0 || projects.some((p) => p.parent_id === current.id)
     if (hasContent) {
-      if (!confirm(`'${current.name}'에 하위 프로젝트나 문서가 있습니다.\n하위 프로젝트와 문서를 상위로 옮기고 이 프로젝트만 삭제할까요? (문서는 삭제되지 않습니다)`)) return
-    } else if (!confirm(`'${current.name}' 프로젝트를 삭제할까요?`)) return
+      if (!(await askConfirm(`'${current.name}'에 하위 프로젝트나 문서가 있습니다.\n하위 프로젝트와 문서를 상위로 옮기고 이 프로젝트만 삭제할까요? (문서는 삭제되지 않습니다)`, { title: '프로젝트 삭제', confirmLabel: '삭제', danger: true }))) return
+    } else if (!(await askConfirm(`'${current.name}' 프로젝트를 삭제할까요?`, { title: '프로젝트 삭제', confirmLabel: '삭제', danger: true }))) return
     await papi.deleteProject(current.id, hasContent)
     setSelection(current.parent_id ?? 'all')
     reloadAll()
@@ -364,7 +364,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
     if (mode === 'recreate') {
       const names = groups.map((g) => g.store.collection).join(', ')
       const extra = shared.length ? `\n\n이 일괄 적재에 포함되지 않은 문서 ${shared.reduce((n, g) => n + g.others_in_collection, 0)}개도 함께 지워집니다.` : ''
-      if (!confirm(`컬렉션(${names})을 비우고 다시 적재합니다.${extra}\n진행할까요?`)) return
+      if (!(await askConfirm(`컬렉션(${names})을 비우고 다시 적재합니다.${extra}\n진행할까요?`, { title: '비우고 다시 적재', confirmLabel: '진행', danger: true }))) return
     }
     setError('')
     setBusy(true)

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { LineDiff, TemplateEditor } from '../components/TemplateEditor'
-import { Badge, ErrorBanner, Modal, fmtDate, useAsync } from '../components/ui'
+import { askText, askConfirm, Badge, ErrorBanner, Modal, fmtDate, useAsync } from '../components/ui'
 import type { Prompt, PromptVersion } from '../types'
 
 const STATUS_LABEL: Record<string, string> = { draft: '초안', testing: '테스트', approved: '승인', production: '운영' }
@@ -81,9 +81,10 @@ function PromptDetail({ prompt, variables, wrap, onSelect }: { prompt: Prompt; v
               <tr key={v.id} style={v.id === editId ? { background: 'var(--accent-soft)' } : undefined}>
                 <td><b>v{v.version}</b></td>
                 <td>
-                  <select aria-label={`v${v.version} 상태`} value={v.status} onChange={(e) => {
-                    if (e.target.value === 'production' && !confirm('운영(production)으로 승격할까요? 기존 운영 버전은 승인 상태로 바뀝니다.')) return
-                    void wrap(() => api.setVersionStatus(v.id, e.target.value))()
+                  <select aria-label={`v${v.version} 상태`} value={v.status} onChange={async (e) => {
+                    const next = e.target.value
+                    if (next === 'production' && !(await askConfirm('운영(production)으로 승격할까요? 기존 운영 버전은 승인 상태로 바뀝니다.', { title: '운영 승격', confirmLabel: '승격' }))) return
+                    void wrap(() => api.setVersionStatus(v.id, next))()
                   }}>
                     {Object.entries(STATUS_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                   </select>
@@ -95,7 +96,7 @@ function PromptDetail({ prompt, variables, wrap, onSelect }: { prompt: Prompt; v
                   <button className="sm" onClick={() => setEditId(v.id)}>편집 기준</button>
                   {arr[i + 1] && <button className="sm" onClick={() => setDiff({ a: arr[i + 1], b: v })}>이전과 diff</button>}
                   <button className="sm" onClick={wrap(() => api.rollbackVersion(v.id))} title="이 버전 내용으로 새 버전을 만듭니다">롤백</button>
-                  <button className="sm" onClick={wrap(async () => { const name = prompt.name && window.prompt('새 프롬프트 이름', `${prompt.name} (fork v${v.version})`); if (name) onSelect((await api.forkVersion(v.id, name)).id) })}>fork</button>
+                  <button className="sm" onClick={wrap(async () => { const name = prompt.name && (await askText('새 프롬프트 이름', `${prompt.name} (fork v${v.version})`, { title: '프롬프트 fork', confirmLabel: 'fork' }))?.trim(); if (name) onSelect((await api.forkVersion(v.id, name)).id) })}>fork</button>
                 </td>
               </tr>
             ))}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { vapi, type CollectionInput, type VectorStoreInput } from '../api'
-import { Badge, ConfirmModal, ErrorBanner, Modal, useAsync, useRefreshOnFocus } from '../components/ui'
+import { askConfirm, Badge, ConfirmModal, ErrorBanner, Modal, useAsync, useRefreshOnFocus } from '../components/ui'
 import type { VectorCollection, VectorStore } from '../types'
 
 const EMPTY: VectorStoreInput = { name: '', kind: 'milvus', uri: 'http://localhost:19530', token_env: '', db_name: '', tls_ca_path: '', tls_server_name: '', enabled: true }
@@ -33,8 +33,9 @@ export default function VectorStoresPage() {
       }
     })
   const makeDefault = (c: VectorCollection) => act(() => vapi.updateCollection(c.id, { name: c.name, description: c.description, is_default: true }))
-  const remove = (c: VectorCollection) => {
-    if (!confirm(`'${c.name}' 컬렉션 등록을 삭제할까요?\nMilvus에 적재된 실제 데이터는 지워지지 않습니다.`)) return
+  const remove = async (c: VectorCollection) => {
+    if (!(await askConfirm(`'${c.name}' 컬렉션 등록을 Studio에서 삭제할까요?\n벡터 저장소에 적재된 실제 데이터는 지워지지 않습니다. 데이터까지 지우려면 먼저 '비우기'를 하세요.`,
+      { title: '컬렉션 삭제', confirmLabel: '삭제', danger: true }))) return
     void act(() => vapi.deleteCollection(c.id))
   }
 

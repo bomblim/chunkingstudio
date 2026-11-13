@@ -4,7 +4,7 @@ import { api } from '../api'
 import { TYPE_COLORS } from '../colors'
 import { ElementDetail, TableView, TypeTag } from '../components/ElementViews'
 import { PageCanvas, usePdf } from '../components/PageCanvas'
-import { Badge, ErrorBanner, Stat, Tabs, fmtDate, useAsync } from '../components/ui'
+import { askConfirm, Badge, ErrorBanner, Stat, Tabs, fmtDate, useAsync } from '../components/ui'
 import type { DocElement } from '../types'
 
 type Tab = 'compare' | 'tree' | 'quality' | 'raw'
@@ -30,7 +30,7 @@ export default function DocumentViewerPage() {
           </p>
         </div>
         <div className="row">
-          <button className="danger" onClick={async () => { if (confirm('이 문서를 삭제할까요? 되돌릴 수 없습니다.')) { await api.deleteDocument(d.id); history.back() } }}>삭제</button>
+          <button className="danger" onClick={async () => { if (await askConfirm('이 문서를 삭제할까요? 되돌릴 수 없습니다.', { title: '문서 삭제', confirmLabel: '삭제', danger: true })) { await api.deleteDocument(d.id); history.back() } }}>삭제</button>
           <Link className="btn" to={`/playground?doc=${d.id}`}>청킹 →</Link>
         </div>
       </div>

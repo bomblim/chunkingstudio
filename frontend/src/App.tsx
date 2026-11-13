@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { authApi, UNAUTHORIZED_EVENT } from './api'
 import { LogoIcon, icons } from './components/Icons'
-import { ErrorBanner, Modal } from './components/ui'
+import { DialogHost, ErrorBanner, Modal } from './components/ui'
 import ApiGuidePage from './pages/ApiGuidePage'
 import DocumentsPage from './pages/DocumentsPage'
 import DocumentViewerPage from './pages/DocumentViewerPage'
@@ -63,6 +63,7 @@ function Shell({ user, onUserChange, onLogout }: { user: User; onUserChange: (u:
 
   return (
     <div className={`app ${collapsed ? 'nav-collapsed' : ''}`}>
+      <DialogHost />
       <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label="주 메뉴">
         <div className="brand">
           <LogoIcon />
