@@ -15,6 +15,7 @@ RAG 청킹 품질을 실험·검증·운영하는 UI 기반 솔루션. 상세 �
 - 벡터 검색: 임베딩 모델(OpenAI 호환·Mock), 벡터 저장소(Milvus·메모리 연결, 연결마다 컬렉션 여러 개 `vector_collections`), 청크 적재·질의 테스트(선택: 리랭크 모델 `rerank_models` — TEI·Cohere 형식·Mock, 질의 시 후보 재정렬). 적재 위치는 문서 프로젝트의 `vector_collection_id`(상속), 없으면 기본 컬렉션(`is_default`). 로컬 Milvus는 `deploy/milvus/docker-compose.yml` (v3.0.6, pymilvus 3.x).
 - 프로젝트: 문서 분류 트리(`projects`). 프로젝트별 청킹 프로파일(방식·프롬프트·LLM 모델·설정)을 두고 비운 필드는 상위에서 상속. 청킹 화면 기본값·일괄 청킹에 사용. 기존 DB 컬럼 추가는 `db.add_missing_columns()`가 시작 시 처리. 프로젝트 메타데이터(`meta`)·권한(`permissions`, `permission_mode`)은 적재 시 청크 metadata에 복사되고 질의 시 principals로 필터.
 - ID: 모든 레코드 ID는 UUIDv7 문자열(`app/ids.py`, 생성 순서로 정렬됨). 정수 ID였던 기존 SQLite DB는 시작 시 `app/migrate_uuid.py`가 백업 후 한 번 변환. Milvus 컬렉션의 `run_id`·`document_id`는 VARCHAR(UUID)이며, 정수 ID 시절 컬렉션에는 적재를 막는다(다시 만들어야 함).
+- 외부 API: `/api/v1/…`(파이프라인 업로드→파싱→청킹→적재→질의, `app/api/external.py`)은 API 키 필수(`api_keys`, sha256 해시만 저장). 화면용 `/api/…`는 키 없음(내부망 전제).
 - 2단계(실험 비교, RAGAS 평가, 데이터셋 생성)는 미구현.
 - 결정·미결 사항은 `docs/requirements.md` 10장 참고.
 

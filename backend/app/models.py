@@ -50,6 +50,18 @@ class Parser(TimestampMixin, Base):
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class ApiKey(TimestampMixin, Base):
+    """외부 시스템용 API 키 (/api/v1). 키 원문은 발급할 때 한 번만 보여 주고 해시만 저장한다."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200))
+    prefix: Mapped[str] = mapped_column(String(20))  # 목록 표시용 앞부분 (예: csk_ab12cd34)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # sha256
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class StoredFile(TimestampMixin, Base):
     """API로 업로드한 원본 파일(내용 해시로 저장). 파싱 작업은 file_id로 이 파일을 참조한다."""
 

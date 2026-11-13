@@ -137,18 +137,18 @@ LLM API 키와 Parser 인증값은 DB에 저장하지 않고, 모델·Parser에 
 
 ## 주요 API
 
-| 용도 | API |
-|---|---|
-| API 유입 (Parser 결과 push) | `POST /api/ingest` `{parser_id, title, payload}` |
-| API 유입 (배치) | `POST /api/ingest/batch` (JSON / JSONL 업로드) |
-| 1. 문서 업로드 | `POST /api/files` (multipart `file`) → `file_id` |
-| 2. 파싱 (비동기) | `POST /api/parse-jobs` `{file_id, parser_id, project_id}` → `GET /api/parse-jobs/{id}` (완료 시 `document_id`) |
-| 3. 청킹 (비동기) | `POST /api/runs` `{document_id}` (method 생략 시 프로젝트 프로파일) → `GET /api/runs/{id}` |
-| 4. 저장소 적재 (비동기) | `POST /api/indexes` `{run_id, embedding_model_id}` (컬렉션은 프로젝트 설정) → `GET /api/indexes/{id}` |
-| 5. 질의 | `POST /api/indexes/{id}/query` `{query, top_k, principals?, rerank_model_id?}` |
-| 화면 업로드 + 파싱 (Studio 유입) | `POST /api/test-parse` (파일 + `parser_ids`) → `GET /api/parse-jobs?ids=` |
+외부 시스템은 **`/api/v1`**을 씁니다. **API 키가 필요**하며(화면 **API 안내 → API 키 관리**에서 발급), `Authorization: Bearer <키>` 또는 `X-API-Key` 헤더로 보냅니다. 키가 없거나 틀리면 `401`입니다.
 
-모든 ID는 UUID 문자열입니다(JSON에서는 따옴표로 감싸고, Milvus 필터도 `run_id == "…"` 형식). curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
+| 단계 | API (`/api/v1`, 키 필수) |
+|---|---|
+| 1. 문서 업로드 | `POST /api/v1/files` (multipart `file`) → `file_id` |
+| 2. 파싱 (비동기) | `POST /api/v1/parse-jobs` `{file_id, parser_id, project_id}` → `GET /api/v1/parse-jobs/{id}` (완료 시 `document_id`) · 파서 결과를 바로 넣기: `POST /api/v1/ingest` |
+| 3. 청킹 (비동기) | `POST /api/v1/runs` `{document_id}` (method 생략 시 프로젝트 프로파일) → `GET /api/v1/runs/{id}` |
+| 4. 저장소 적재 (비동기) | `POST /api/v1/indexes` `{run_id, embedding_model_id}` (컬렉션은 프로젝트 설정) → `GET /api/v1/indexes/{id}` |
+| 5. 질의 | `POST /api/v1/indexes/{id}/query` `{query, top_k, principals?, rerank_model_id?}` |
+| ID 조회 | `GET /api/v1/parsers` · `/projects` · `/embedding-models` · `/rerank-models` |
+
+화면이 쓰는 `/api/…`(키 없음)는 내부망·프록시로만 열어 두는 전제입니다. 모든 ID는 UUID 문자열입니다(JSON에서는 따옴표로 감싸고, Milvus 필터도 `run_id == "…"` 형식). curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
 
 ## 문서
 

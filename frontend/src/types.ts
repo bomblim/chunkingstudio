@@ -470,3 +470,13 @@ export interface IndexPlan {
   groups: { store: StoreBrief; document_count: number; chunk_count: number; via_default: boolean; existing_index: ExistingIndexBrief | null; others_in_collection: number; other_titles: string[] }[]
   skipped: { document_id: string; title: string; reason: string }[]
 }
+
+/** 외부용 API(/api/v1) 키. 원문(key)은 발급 응답에서만 온다 */
+export interface ApiKey {
+  id: string
+  name: string
+  prefix: string
+  last_used_at: string | null
+  created_at: string
+  key?: string
+}

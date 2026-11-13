@@ -1,4 +1,5 @@
 import type {
+  ApiKey,
   IndexPlan,
   IndexTarget,
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
@@ -165,4 +166,11 @@ export const papi = {
     post<{ moved: number }>('/api/documents/move', { document_ids: documentIds, project_id: projectId }),
   patchDocument: (id: string, body: { title?: string; doc_type?: string; project_id?: string; clear_project?: boolean }) =>
     patch<DocumentSummary>(`/api/documents/${id}`, body),
+}
+
+/** 외부용 API 키 관리 */
+export const kapi = {
+  apiKeys: () => get<ApiKey[]>('/api/api-keys'),
+  createApiKey: (name: string) => post<ApiKey & { key: string }>('/api/api-keys', { name }),
+  deleteApiKey: (id: string) => del(`/api/api-keys/${id}`),
 }
