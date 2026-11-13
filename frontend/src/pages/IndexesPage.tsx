@@ -145,17 +145,17 @@ function CreateIndexModal({ presetRun, onClose, onCreated }: { presetRun?: numbe
       <ErrorBanner error={error || target.error} />
       {picker}
       <div className="card" style={{ margin: '8px 0', padding: 10 }}>
-        <div className="small muted">적재 위치 — 문서가 속한 프로젝트의 벡터 저장소 (프로젝트 설정에서 변경)</div>
+        <div className="small muted">적재 위치 — 문서가 속한 프로젝트의 적재 컬렉션 (프로젝트 설정에서 변경)</div>
         {t?.store ? (
           <div className="row" style={{ gap: 8, marginTop: 4 }}>
             <b>{t.store.name}</b><span className="mono">{t.store.collection}</span>
             {t.source.kind === 'default'
-              ? <Badge kind="accent">기본 저장소 · {t.source.reason}</Badge>
+              ? <Badge kind="accent">기본 컬렉션 · {t.source.reason}</Badge>
               : <span className="small muted">프로젝트 '{t.source.project_name}' 설정</span>}
             {!t.store.enabled && <Badge kind="warn">비활성 저장소</Badge>}
             <span className="small muted">{existing ? `기존 청크 ${existing.chunk_count}개` : '컬렉션 새로 생성'}</span>
           </div>
-        ) : t && <div className="banner warn small" style={{ margin: '4px 0 0' }}>적재할 저장소가 없습니다. '벡터 저장소'에서 기본 저장소를 지정하세요.</div>}
+        ) : t && <div className="banner warn small" style={{ margin: '4px 0 0' }}>적재할 컬렉션이 없습니다. '벡터 저장소'에서 기본 컬렉션을 지정하세요.</div>}
         {already && <div className="small" style={{ color: 'var(--warn)', marginTop: 4 }}>이 문서는 이미 적재되어 있습니다. 적재하면 이 문서의 이전 청크를 지우고 선택한 실행으로 교체합니다.</div>}
       </div>
       <div className="grid-3">

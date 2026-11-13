@@ -292,17 +292,28 @@ export interface VectorStore {
   db_name: string
   tls_ca_path: string
   tls_server_name: string
-  /** 적재할 컬렉션 (저장소 = 연결 + 컬렉션) */
-  collection: string
-  /** 미분류 문서·저장소를 지정하지 않은 프로젝트가 쓰는 기본 저장소 */
-  is_default: boolean
   enabled: boolean
-  /** 이 저장소를 직접 지정한 프로젝트 이름 */
-  projects: string[]
+  /** 이 연결 아래의 적재 컬렉션 */
+  collections: VectorCollection[]
   last_health: { ok?: boolean; message?: string; server_version?: string; collections?: string[]; latency_ms?: number; checked_at?: string }
 }
 
-export interface StoreBrief { id: number; name: string; kind: 'milvus' | 'memory'; collection: string; enabled: boolean; is_default: boolean }
+/** 벡터 저장소(연결) 아래의 적재 컬렉션 */
+export interface VectorCollection {
+  id: number
+  store_id: number
+  name: string
+  description: string
+  /** 미분류 문서·컬렉션을 지정하지 않은 프로젝트가 쓰는 기본 컬렉션(전체에서 하나) */
+  is_default: boolean
+  /** 이 컬렉션을 직접 지정한 프로젝트 이름 */
+  projects: string[]
+  /** Studio에서 적재한 청크 수(적재 기록이 없으면 null) */
+  chunk_count: number | null
+}
+
+/** 적재 대상: id/name/kind/enabled는 연결(저장소), collection*은 컬렉션 */
+export interface StoreBrief { id: number; name: string; kind: 'milvus' | 'memory'; enabled: boolean; collection_id: number; collection: string; is_default: boolean }
 export interface StoreSource { kind: 'project' | 'default'; project_id: number | null; project_name: string | null; reason?: string }
 export interface ExistingIndexBrief {
   id: number; status: string; chunk_count: number; embedding_model_id: number; embedding_model_name: string
@@ -382,7 +393,7 @@ export interface ProjectProfile {
   params: Record<string, unknown> | null
   settings: Partial<ChunkSettings> | null
   doc_type: string | null
-  vector_store_id: number | null
+  vector_collection_id: number | null
 }
 
 export type ProjectMeta = Record<string, string | number | boolean | null | (string | number | boolean)[]>
@@ -429,7 +440,7 @@ export interface ProjectTree {
 
 /** 프로젝트 일괄 적재 계획: 문서마다 가장 최근에 성공한 청킹 실행 */
 export interface IndexPlan {
-  items: { document_id: number; title: string; run_id: number; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string; store_id: number; store_source: 'project' | 'default' }[]
+  items: { document_id: number; title: string; run_id: number; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string; collection_id: number; store_source: 'project' | 'default' }[]
   /** 저장소(컬렉션)별 묶음 */
   groups: { store: StoreBrief; document_count: number; chunk_count: number; via_default: boolean; existing_index: ExistingIndexBrief | null; others_in_collection: number; other_titles: string[] }[]
   skipped: { document_id: number; title: string; reason: string }[]

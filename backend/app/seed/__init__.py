@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from .. import sample_parser
 from ..chunking import prompting
 from ..config import settings
-from ..models import Document, EmbeddingModel, LLMModel, Parser, Prompt, PromptVersion, VectorStore
+from ..models import (
+    Document, EmbeddingModel, LLMModel, Parser, Project, Prompt, PromptVersion, VectorCollection, VectorStore,
+)
 from ..services import save_document, sha256, store_file
 
 SAMPLE = Path(__file__).with_name("sample_policy.md")
@@ -103,22 +105,36 @@ def seed_vectors(db: Session) -> None:
             VectorStore(name="메모리 (개발용)", kind="memory", collection="cs_memory"),
         ])
         db.commit()
-    ensure_store_defaults(db)
+    ensure_collections(db)
 
 
-def ensure_store_defaults(db: Session) -> None:
-    """컬렉션 개념 도입 전 DB 보정: 컬렉션 이름이 빈 저장소를 채우고, 기본 저장소가 없으면 하나를 지정한다."""
+def ensure_collections(db: Session) -> None:
+    """저장소(연결)별 컬렉션 테이블 보정.
+
+    - 컬렉션이 하나도 없으면(구버전 DB 또는 첫 시드): 저장소마다 예전 '저장소 컬렉션'을 컬렉션으로 옮기고,
+      저장소 단위로 지정하던 프로젝트 설정(vector_store_id)을 그 컬렉션으로 옮긴다.
+    - 기본 컬렉션이 없으면 하나를 지정한다.
+    """
     stores = list(db.scalars(select(VectorStore).order_by(VectorStore.id)))
     if not stores:
         return
-    if not any(s.is_default for s in stores):
-        pick = next((s for s in stores if s.kind == "milvus" and s.enabled), None) or stores[0]
-        pick.is_default = True
-    for s in stores:
-        if s.is_default is None:
-            s.is_default = False
-        if not s.collection:
-            s.collection = "cs_default" if s.is_default else f"cs_store{s.id}"
+    if not db.scalar(select(VectorCollection)):
+        by_store = {}
+        for s in stores:
+            name = s.collection or ("cs_default" if s.is_default else f"cs_store{s.id}")
+            c = VectorCollection(store_id=s.id, name=name, is_default=bool(s.is_default))
+            db.add(c)
+            by_store[s.id] = c
+        db.flush()
+        for p in db.scalars(select(Project).where(Project.vector_store_id.is_not(None))):
+            if p.vector_collection_id is None and p.vector_store_id in by_store:
+                p.vector_collection_id = by_store[p.vector_store_id].id
+    if not db.scalar(select(VectorCollection).where(VectorCollection.is_default.is_(True))):
+        colls = list(db.scalars(select(VectorCollection).order_by(VectorCollection.id)))
+        if colls:
+            enabled = {s.id for s in stores if s.enabled and s.kind == "milvus"}
+            pick = next((c for c in colls if c.store_id in enabled), colls[0])
+            pick.is_default = True
     db.commit()
 
 

@@ -20,8 +20,8 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
   const models = useAsync(() => api.models(), [])
   const stores = useAsync(() => vapi.vectorStores(), [])
   const [d, setD] = useState<ProjectInput>(() => project
-    ? { name: project.name, description: project.description, parent_id: project.parent_id, sort_order: project.sort_order, method: project.method, prompt_id: project.prompt_id, prompt_version_id: project.prompt_version_id, model_id: project.model_id, params: project.params, settings: project.settings, doc_type: project.doc_type, vector_store_id: project.vector_store_id, meta: project.meta, permissions: project.permissions, permission_mode: project.permission_mode }
-    : { name: '', description: '', parent_id: parentId ?? null, sort_order: 0, method: null, prompt_id: null, prompt_version_id: null, model_id: null, params: null, settings: null, doc_type: null, vector_store_id: null, meta: null, permissions: null, permission_mode: null })
+    ? { name: project.name, description: project.description, parent_id: project.parent_id, sort_order: project.sort_order, method: project.method, prompt_id: project.prompt_id, prompt_version_id: project.prompt_version_id, model_id: project.model_id, params: project.params, settings: project.settings, doc_type: project.doc_type, vector_collection_id: project.vector_collection_id, meta: project.meta, permissions: project.permissions, permission_mode: project.permission_mode }
+    : { name: '', description: '', parent_id: parentId ?? null, sort_order: 0, method: null, prompt_id: null, prompt_version_id: null, model_id: null, params: null, settings: null, doc_type: null, vector_collection_id: null, meta: null, permissions: null, permission_mode: null })
   const [error, setError] = useState('')
   const [metaRows, setMetaRows] = useState(() => metaToRows(project?.meta ?? null))
   const [tab, setTab] = useState<'profile' | 'access'>('profile')
@@ -112,16 +112,21 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
         <label className="field">문서 유형 (프롬프트 {'{{doc_type}}'})
           <input value={d.doc_type ?? ''} onChange={(e) => set('doc_type', e.target.value || null)} placeholder={inherited?.doc_type ? `상속: ${inherited.doc_type}` : '비우면 상속'} />
         </label>
-        <label className="field">벡터 저장소 (적재 컬렉션)
-          <select value={d.vector_store_id ?? ''} onChange={(e) => set('vector_store_id', e.target.value ? Number(e.target.value) : null)}>
-            <option value="">{parent ? '상속' : '기본 저장소 사용'}</option>
-            {stores.data?.map((s) => <option key={s.id} value={s.id}>{s.name} — {s.collection}{s.is_default ? ' (기본)' : ''}{s.enabled ? '' : ' (비활성)'}</option>)}
+        <label className="field">적재 컬렉션 (벡터 저장소)
+          <select value={d.vector_collection_id ?? ''} onChange={(e) => set('vector_collection_id', e.target.value ? Number(e.target.value) : null)}>
+            <option value="">{parent ? '상속' : '기본 컬렉션 사용'}</option>
+            {stores.data?.filter((s) => s.collections.length).map((s) => (
+              <optgroup key={s.id} label={`${s.name}${s.enabled ? '' : ' (비활성)'}`}>
+                {s.collections.map((c) => <option key={c.id} value={c.id}>{c.name}{c.is_default ? ' (기본)' : ''}{c.description ? ` — ${c.description}` : ''}</option>)}
+              </optgroup>
+            ))}
           </select>
-          {!d.vector_store_id && (() => {
-            const st = inherited?.vector_store ?? stores.data?.find((s) => s.is_default)
-            if (!st) return <span className="small" style={{ color: 'var(--warn)' }}> — 기본 저장소가 없습니다. '벡터 저장소'에서 지정하세요</span>
+          {!d.vector_collection_id && (() => {
+            const def = stores.data?.flatMap((s) => s.collections.map((c) => ({ name: s.name, collection: c.name, is_default: c.is_default }))).find((c) => c.is_default)
+            const st = inherited?.vector_store ?? def
+            if (!st) return <span className="small" style={{ color: 'var(--warn)' }}> — 기본 컬렉션이 없습니다. '벡터 저장소'에서 지정하세요</span>
             const src = inherited?.vector_store_source
-            return <span className="small muted"> — {src?.kind === 'project' ? `상속값: ${st.name} · ${st.collection} (${src.project_name})` : `기본 저장소: ${st.name} · ${st.collection}`}</span>
+            return <span className="small muted"> — {src?.kind === 'project' ? `상속값: ${st.name} · ${st.collection} (${src.project_name})` : `기본 컬렉션: ${st.name} · ${st.collection}`}</span>
           })()}
         </label>
       </div>

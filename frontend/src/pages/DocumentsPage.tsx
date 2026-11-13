@@ -130,15 +130,15 @@ export default function DocumentsPage() {
                 )}
               </div>
               <div className="row small" style={{ marginTop: 6, gap: 6 }}>
-                <span>벡터 저장소:</span>
+                <span>적재 컬렉션:</span>
                 {eff.vector_store ? (
                   <>
                     <b>{eff.vector_store.name}</b><span className="mono">{eff.vector_store.collection}</span>
                     {eff.vector_store_source.kind === 'default'
-                      ? <span className="muted">(기본 저장소 — 프로젝트에 지정 안 함)</span>
+                      ? <span className="muted">(기본 컬렉션 — 프로젝트에 지정 안 함)</span>
                       : eff.vector_store_source.project_id !== current.id && <span className="muted">(상속: {eff.vector_store_source.project_name})</span>}
                   </>
-                ) : <Badge kind="warn">없음 — '벡터 저장소'에서 기본 저장소를 지정하세요</Badge>}
+                ) : <Badge kind="warn">없음 — '벡터 저장소'에서 기본 컬렉션을 지정하세요</Badge>}
               </div>
               <div className="row small" style={{ marginTop: 6, gap: 6 }}>
                 <span>메타데이터:</span>
@@ -488,18 +488,18 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
       <button className="primary" disabled={busy || !items.length || !modelId || modelConflict} onClick={() => void submit()}>{busy ? '시작 중…' : `문서 ${items.length}개 적재`}</button></>}>
       <ErrorBanner error={error || plan.error} />
       <p className="small muted" style={{ marginTop: 0 }}>
-        문서마다 <b>가장 최근에 성공한 청킹 실행</b>을 골라, 문서가 속한 프로젝트의 <b>벡터 저장소(컬렉션)</b>에 순서대로 적재합니다.
-        저장소를 지정하지 않은 프로젝트는 기본 저장소에 들어갑니다. 같은 문서의 이전 청크는 교체되어 중복되지 않습니다.
+        문서마다 <b>가장 최근에 성공한 청킹 실행</b>을 골라, 문서가 속한 프로젝트의 <b>적재 컬렉션</b>에 순서대로 적재합니다.
+        컬렉션을 지정하지 않은 프로젝트는 기본 컬렉션에 들어갑니다. 같은 문서의 이전 청크는 교체되어 중복되지 않습니다.
       </p>
       <label className="check small"><input type="checkbox" checked={includeDesc} onChange={(e) => setIncludeDesc(e.target.checked)} />하위 프로젝트 문서 포함</label>
 
       {groups.length > 0 && (
         <table className="list" style={{ margin: '8px 0' }}>
-          <thead><tr><th>적재 위치</th><th>컬렉션</th><th>문서</th><th>청크</th><th>기존 적재</th></tr></thead>
+          <thead><tr><th>벡터 저장소</th><th>컬렉션</th><th>문서</th><th>청크</th><th>기존 적재</th></tr></thead>
           <tbody>
             {groups.map((g) => (
-              <tr key={g.store.id}>
-                <td><b>{g.store.name}</b>{g.via_default && <> <Badge kind="accent">기본 저장소</Badge></>}</td>
+              <tr key={g.store.collection_id}>
+                <td><b>{g.store.name}</b>{g.via_default && <> <Badge kind="accent">기본 컬렉션</Badge></>}</td>
                 <td className="mono">{g.store.collection}</td>
                 <td>{g.document_count}</td>
                 <td>{g.chunk_count}</td>
@@ -515,7 +515,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
 
       <div className="scroll" style={{ maxHeight: 220, margin: '8px 0', border: '1px solid var(--border)', borderRadius: 6 }}>
         <table className="list">
-          <thead><tr><th>문서</th><th>프로젝트</th><th>적재할 청킹 실행</th><th>청크</th><th>저장소</th></tr></thead>
+          <thead><tr><th>문서</th><th>프로젝트</th><th>적재할 청킹 실행</th><th>청크</th><th>적재 위치</th></tr></thead>
           <tbody>
             {items.map((i) => (
               <tr key={i.document_id}>
@@ -526,7 +526,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
                   {i.note && <div style={{ color: 'var(--warn)' }}>{i.note}</div>}
                 </td>
                 <td>{i.chunk_count}</td>
-                <td className="small">{groups.find((g) => g.store.id === i.store_id)?.store.name}</td>
+                <td className="small">{(() => { const g = groups.find((x) => x.store.collection_id === i.collection_id); return g ? `${g.store.name} / ${g.store.collection}` : '' })()}</td>
               </tr>
             ))}
           </tbody>

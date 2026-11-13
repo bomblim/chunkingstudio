@@ -26,8 +26,14 @@ def _run(client, doc_id):
     return _wait(client, f"/api/runs/{run['id']}")
 
 
-def _store(client, name, collection, **kw):
-    r = client.post("/api/vector-stores", json={"name": name, "kind": "memory", "collection": collection, **kw})
+def _conn(client, name):
+    r = client.post("/api/vector-stores", json={"name": name, "kind": "memory"})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def _coll(client, store_id, name, **kw):
+    r = client.post(f"/api/vector-stores/{store_id}/collections", json={"name": name, **kw})
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -38,33 +44,56 @@ def _ctx(client):
     return parser["id"], emb["id"]
 
 
-def test_vector_store_collection_and_default_rules(client):
-    assert client.post("/api/vector-stores", json={"name": "컬렉션없음", "kind": "memory"}).status_code == 400
-    assert client.post("/api/vector-stores", json={"name": "잘못된이름", "kind": "memory",
-                                                   "collection": "1bad-name"}).status_code == 400
+def _default_collection(client):
+    return next(c for s in client.get("/api/vector-stores").json() for c in s["collections"] if c["is_default"])
+
+
+def test_collections_under_one_connection_and_default_rules(client):
     stores = client.get("/api/vector-stores").json()
-    default = [s for s in stores if s["is_default"]]
-    assert len(default) == 1 and default[0]["collection"]  # 시드: 기본 저장소 하나, 모든 저장소에 컬렉션
-    assert all(s["collection"] for s in stores)
-    d = default[0]
-    body = {k: d[k] for k in ("name", "kind", "uri", "token_env", "db_name", "tls_ca_path", "tls_server_name",
-                              "collection", "enabled")}
-    r = client.put(f"/api/vector-stores/{d['id']}", json={**body, "is_default": False})
-    assert r.status_code == 400  # 기본 저장소는 직접 해제할 수 없음
-    r = client.put(f"/api/vector-stores/{d['id']}", json={**body, "is_default": True, "enabled": False})
-    assert r.status_code == 400  # 기본 저장소는 비활성화할 수 없음
+    defaults = [c for s in stores for c in s["collections"] if c["is_default"]]
+    assert len(defaults) == 1  # 시드(또는 이전 저장소 마이그레이션): 기본 컬렉션 하나
+
+    conn = _conn(client, "다중 컬렉션 연결")
+    a = _coll(client, conn["id"], "cs_multi_a", description="방산 규정")
+    b = _coll(client, conn["id"], "cs_multi_b")
+    got = next(s for s in client.get("/api/vector-stores").json() if s["id"] == conn["id"])
+    assert [c["name"] for c in got["collections"]] == ["cs_multi_a", "cs_multi_b"]
+    assert got["collections"][0]["description"] == "방산 규정"
+    # 같은 연결 안에서 이름 중복 불가, 이름 규칙 검사
+    assert client.post(f"/api/vector-stores/{conn['id']}/collections", json={"name": "cs_multi_a"}).status_code == 409
+    assert client.post(f"/api/vector-stores/{conn['id']}/collections", json={"name": "1bad"}).status_code == 400
+
+    # 기본 컬렉션은 하나만: b를 기본으로 지정하면 기존 기본은 해제
+    original = defaults[0]
+    assert client.put(f"/api/vector-collections/{b['id']}", json={"name": "cs_multi_b", "is_default": True}).status_code == 200
+    assert _default_collection(client)["id"] == b["id"]
+    assert client.put(f"/api/vector-collections/{b['id']}", json={"name": "cs_multi_b", "is_default": False}).status_code == 400
+    assert client.delete(f"/api/vector-collections/{b['id']}").status_code == 400  # 기본은 삭제 불가
+    conn_body = {"name": conn["name"], "kind": "memory", "enabled": False}
+    assert client.put(f"/api/vector-stores/{conn['id']}", json=conn_body).status_code == 400  # 기본 컬렉션의 연결은 비활성 불가
+    # 원래 기본으로 되돌림
+    assert client.put(f"/api/vector-collections/{original['id']}",
+                      json={"name": original["name"], "description": original["description"], "is_default": True}).status_code == 200
+
+    # 프로젝트가 쓰는 컬렉션은 삭제 불가, 안 쓰면 삭제
+    p = client.post("/api/projects", json={"name": "컬렉션 사용", "vector_collection_id": a["id"]}).json()
+    assert client.delete(f"/api/vector-collections/{a['id']}").status_code == 400
+    client.put(f"/api/projects/{p['id']}", json={"name": p["name"], "vector_collection_id": None})
+    assert client.delete(f"/api/vector-collections/{a['id']}").status_code == 204
 
 
-def test_project_index_all_uses_project_store_and_latest_run(client):
+def test_project_index_all_uses_project_collection_and_latest_run(client):
     parser_id, emb_id = _ctx(client)
-    s1 = _store(client, "적재 테스트 S1", "cs_t_s1")
-    s2 = _store(client, "적재 테스트 S2", "cs_t_s2")
-    root = client.post("/api/projects", json={"name": "일괄적재", "vector_store_id": s1["id"]}).json()
+    conn = _conn(client, "적재 테스트 연결")
+    s1 = _coll(client, conn["id"], "cs_t_s1")
+    s2 = _coll(client, conn["id"], "cs_t_s2")  # 같은 연결의 다른 컬렉션
+    root = client.post("/api/projects", json={"name": "일괄적재", "vector_collection_id": s1["id"]}).json()
     child = client.post("/api/projects", json={"name": "하위-상속", "parent_id": root["id"]}).json()
     child2 = client.post("/api/projects", json={"name": "하위-S2", "parent_id": root["id"],
-                                                "vector_store_id": s2["id"]}).json()
+                                                "vector_collection_id": s2["id"]}).json()
     eff = next(p for p in client.get("/api/projects").json()["projects"] if p["id"] == child["id"])["effective"]
-    assert eff["vector_store"]["id"] == s1["id"] and eff["vector_store_source"]["project_name"] == "일괄적재"
+    assert eff["vector_store"]["collection_id"] == s1["id"] and eff["vector_store"]["id"] == conn["id"]
+    assert eff["vector_store_source"]["project_name"] == "일괄적재"
 
     a = _doc(client, parser_id, "문서A", root["id"])
     b = _doc(client, parser_id, "문서B", child["id"])
@@ -77,13 +106,13 @@ def test_project_index_all_uses_project_store_and_latest_run(client):
     plan = client.get(f"/api/projects/{root['id']}/index-plan").json()
     assert {i["title"]: i["run_id"] for i in plan["items"]} == {"문서A": a2["id"], "문서B": b1["id"], "문서C": c1["id"]}
     assert [s["title"] for s in plan["skipped"]] == ["문서D"]
-    groups = {g["store"]["collection"]: g["document_count"] for g in plan["groups"]}
-    assert groups == {"cs_t_s1": 2, "cs_t_s2": 1}
+    assert {g["store"]["collection"]: g["document_count"] for g in plan["groups"]} == {"cs_t_s1": 2, "cs_t_s2": 1}
 
     r = client.post(f"/api/projects/{root['id']}/index-all", json={"embedding_model_id": emb_id})
     assert r.status_code == 202, r.text
     ixs = {ix["collection"]: _wait(client, f"/api/indexes/{ix['id']}") for ix in r.json()["indexes"]}
     assert ixs["cs_t_s1"]["status"] == "done" and ixs["cs_t_s2"]["status"] == "done"
+    assert ixs["cs_t_s1"]["store_id"] == ixs["cs_t_s2"]["store_id"] == conn["id"]
     assert ixs["cs_t_s1"]["run_ids"] == sorted([a2["id"], b1["id"]])
     assert ixs["cs_t_s2"]["run_ids"] == [c1["id"]]
     s1_chunks = a2["totals"]["chunk_count"] + b1["totals"]["chunk_count"]
@@ -100,35 +129,37 @@ def test_project_index_all_uses_project_store_and_latest_run(client):
     assert {h["run_id"] for h in hits["hits"]} == {a3["id"], b1["id"]}
 
     # 같은 컬렉션을 쓰는 다른 프로젝트 문서는 '비우고 다시 적재' 시 함께 지워진다는 정보를 준다
-    other = client.post("/api/projects", json={"name": "S1 공유", "vector_store_id": s1["id"]}).json()
+    other = client.post("/api/projects", json={"name": "S1 공유", "vector_collection_id": s1["id"]}).json()
     e = _doc(client, parser_id, "문서E", other["id"])
     e1 = _run(client, e["id"])
     one = client.post("/api/indexes", json={"run_id": e1["id"], "embedding_model_id": emb_id}).json()
     one = _wait(client, f"/api/indexes/{one['id']}")
     assert one["id"] == ixs["cs_t_s1"]["id"] and e1["id"] in one["run_ids"]
     g1 = next(g for g in client.get(f"/api/projects/{root['id']}/index-plan").json()["groups"]
-              if g["store"]["id"] == s1["id"])
+              if g["store"]["collection_id"] == s1["id"])
     assert g1["others_in_collection"] == 1 and g1["other_titles"] == ["문서E"]
+    listed = next(s for s in client.get("/api/vector-stores").json() if s["id"] == conn["id"])
+    c_s1 = next(c for c in listed["collections"] if c["id"] == s1["id"])
+    assert sorted(c_s1["projects"]) == ["S1 공유", "일괄적재"] and c_s1["chunk_count"] == one["chunk_count"]
 
 
-def test_unassigned_document_goes_to_default_store(client):
+def test_unassigned_document_goes_to_default_collection(client):
     parser_id, emb_id = _ctx(client)
-    original = next(s for s in client.get("/api/vector-stores").json() if s["is_default"])
-    tmp = _store(client, "기본 저장소 테스트", "cs_t_default", is_default=True)
+    original = _default_collection(client)
+    conn = _conn(client, "기본 컬렉션 테스트")
+    tmp = _coll(client, conn["id"], "cs_t_default", is_default=True)
     try:
-        stores = client.get("/api/vector-stores").json()
-        assert [s["id"] for s in stores if s["is_default"]] == [tmp["id"]]  # 기본은 하나만
         f = _doc(client, parser_id, "미분류 문서F")
         target = client.get("/api/index-target", params={"document_id": f["id"]}).json()
-        assert target["store"]["id"] == tmp["id"] and target["source"]["kind"] == "default"
+        assert target["store"]["collection_id"] == tmp["id"] and target["source"]["kind"] == "default"
         f1 = _run(client, f["id"])
         ix = client.post("/api/indexes", json={"run_id": f1["id"], "embedding_model_id": emb_id}).json()
         ix = _wait(client, f"/api/indexes/{ix['id']}")
-        assert ix["status"] == "done" and ix["collection"] == "cs_t_default" and ix["store_id"] == tmp["id"]
+        assert ix["status"] == "done" and ix["collection"] == "cs_t_default" and ix["store_id"] == conn["id"]
     finally:
-        body = {k: original[k] for k in ("name", "kind", "uri", "token_env", "db_name", "tls_ca_path",
-                                          "tls_server_name", "collection", "enabled")}
-        assert client.put(f"/api/vector-stores/{original['id']}", json={**body, "is_default": True}).status_code == 200
+        r = client.put(f"/api/vector-collections/{original['id']}",
+                       json={"name": original["name"], "description": original["description"], "is_default": True})
+        assert r.status_code == 200
 
 
 def test_project_index_all_without_runs(client):

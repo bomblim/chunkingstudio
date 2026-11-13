@@ -13,8 +13,8 @@ from ..config import settings
 from ..db import get_db
 from ..embeddings import TEMPLATE_FIELDS, EmbeddingError, embed
 from ..indexing import execute_index_job, query_index
-from ..models import ChunkRun, Document, EmbeddingModel, Project, VectorIndex, VectorStore
-from ..projects import default_vector_store, load_tree, resolve_vector_store, store_brief, validate_principal
+from ..models import ChunkRun, Document, EmbeddingModel, Project, VectorCollection, VectorIndex, VectorStore
+from ..projects import default_collection, load_tree, resolve_collection, target_brief, validate_principal
 from ..vectorstores import VectorStoreError, open_store, validate_collection_name
 from . import get_or_404, row_dict
 
@@ -96,8 +96,9 @@ def embedding_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, 
     return health
 
 
-# ------------------------------------------------------------------ 벡터 저장소
+# ------------------------------------------------------------------ 벡터 저장소(연결) · 컬렉션
 class VectorStoreIn(BaseModel):
+    """연결 정보만. 적재 컬렉션은 연결 아래에 따로 등록한다(/vector-stores/{id}/collections)."""
     name: str
     kind: str = "milvus"
     uri: str = "http://localhost:19530"
@@ -105,17 +106,28 @@ class VectorStoreIn(BaseModel):
     db_name: str = ""
     tls_ca_path: str = ""
     tls_server_name: str = ""
-    collection: str = ""
-    is_default: bool = False
     enabled: bool = True
 
 
-def _store_out(db: Session, s: VectorStore) -> dict[str, Any]:
-    d = row_dict(s)
-    d["collection"] = s.collection or ""
-    d["is_default"] = bool(s.is_default)
-    d["projects"] = [p.name for p in db.scalars(select(Project).where(Project.vector_store_id == s.id)
+class CollectionIn(BaseModel):
+    name: str
+    description: str = ""
+    is_default: bool = False
+
+
+def _collection_out(db: Session, c: VectorCollection) -> dict[str, Any]:
+    d = row_dict(c)
+    d["projects"] = [p.name for p in db.scalars(select(Project).where(Project.vector_collection_id == c.id)
                                                 .order_by(Project.name))]
+    ix = db.scalar(select(VectorIndex).where(VectorIndex.store_id == c.store_id, VectorIndex.collection == c.name)
+                   .order_by(VectorIndex.id.desc()))
+    d["chunk_count"] = ix.chunk_count if ix else None
+    return d
+
+
+def _store_out(db: Session, s: VectorStore) -> dict[str, Any]:
+    d = row_dict(s, exclude={"collection", "is_default"})
+    d["collections"] = [_collection_out(db, c) for c in s.collections]
     return d
 
 
@@ -127,27 +139,6 @@ def _check_store_body(db: Session, body: VectorStoreIn, store_id: int | None = N
     dup = db.scalar(select(VectorStore).where(VectorStore.name == body.name, VectorStore.id != (store_id or 0)))
     if dup:
         raise HTTPException(409, "같은 이름의 저장소가 있습니다")
-    body.collection = body.collection.strip()
-    if not body.collection:
-        raise HTTPException(400, "컬렉션 이름을 입력하세요")
-    try:
-        validate_collection_name(body.collection)
-    except VectorStoreError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    if body.is_default and not body.enabled:
-        raise HTTPException(400, "기본 저장소는 비활성화할 수 없습니다")
-
-
-def _apply_default(db: Session, s: VectorStore, want_default: bool) -> None:
-    current = default_vector_store(db)
-    if want_default:
-        for other in db.scalars(select(VectorStore).where(VectorStore.is_default.is_(True), VectorStore.id != s.id)):
-            other.is_default = False
-        s.is_default = True
-    elif current is not None and current.id == s.id:
-        raise HTTPException(400, "기본 저장소는 해제할 수 없습니다. 다른 저장소를 기본으로 지정하세요")
-    else:
-        s.is_default = current is None  # 기본 저장소가 하나도 없으면 이 저장소를 기본으로
 
 
 @router.get("/vector-stores")
@@ -158,10 +149,8 @@ def list_vector_stores(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 @router.post("/vector-stores", status_code=201)
 def create_vector_store(body: VectorStoreIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     _check_store_body(db, body)
-    s = VectorStore(**body.model_dump(exclude={"is_default"}), is_default=False)
+    s = VectorStore(**body.model_dump())
     db.add(s)
-    db.flush()
-    _apply_default(db, s, body.is_default)
     db.commit()
     return _store_out(db, s)
 
@@ -170,13 +159,77 @@ def create_vector_store(body: VectorStoreIn, db: Session = Depends(get_db)) -> d
 def update_vector_store(store_id: int, body: VectorStoreIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     s = get_or_404(db, VectorStore, store_id)
     _check_store_body(db, body, store_id)
-    if s.is_default and not body.enabled:
-        raise HTTPException(400, "기본 저장소는 비활성화할 수 없습니다. 다른 저장소를 기본으로 지정한 뒤 바꾸세요")
-    for k, v in body.model_dump(exclude={"is_default"}).items():
+    if not body.enabled and any(c.is_default for c in s.collections):
+        raise HTTPException(400, "기본 컬렉션이 있는 저장소는 비활성화할 수 없습니다. 다른 컬렉션을 기본으로 지정한 뒤 바꾸세요")
+    for k, v in body.model_dump().items():
         setattr(s, k, v)
-    _apply_default(db, s, body.is_default)
     db.commit()
     return _store_out(db, s)
+
+
+def _check_collection(db: Session, store: VectorStore, body: CollectionIn, collection_id: int | None = None) -> None:
+    body.name = body.name.strip()
+    if not body.name:
+        raise HTTPException(400, "컬렉션 이름을 입력하세요")
+    try:
+        validate_collection_name(body.name)
+    except VectorStoreError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    dup = db.scalar(select(VectorCollection).where(VectorCollection.store_id == store.id,
+                                                   VectorCollection.name == body.name,
+                                                   VectorCollection.id != (collection_id or 0)))
+    if dup:
+        raise HTTPException(409, "이 저장소에 같은 이름의 컬렉션이 있습니다")
+    if body.is_default and not store.enabled:
+        raise HTTPException(400, "비활성 저장소의 컬렉션은 기본으로 지정할 수 없습니다")
+
+
+def _apply_default(db: Session, c: VectorCollection, want_default: bool) -> None:
+    current = default_collection(db)
+    if want_default:
+        for other in db.scalars(select(VectorCollection).where(VectorCollection.is_default.is_(True),
+                                                               VectorCollection.id != c.id)):
+            other.is_default = False
+        c.is_default = True
+    elif current is not None and current.id == c.id:
+        raise HTTPException(400, "기본 컬렉션은 해제할 수 없습니다. 다른 컬렉션을 기본으로 지정하세요")
+    else:
+        c.is_default = current is None  # 기본 컬렉션이 하나도 없으면 이 컬렉션을 기본으로
+
+
+@router.post("/vector-stores/{store_id}/collections", status_code=201)
+def create_collection(store_id: int, body: CollectionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+    store = get_or_404(db, VectorStore, store_id)
+    _check_collection(db, store, body)
+    c = VectorCollection(store_id=store.id, name=body.name, description=body.description, is_default=False)
+    db.add(c)
+    db.flush()
+    _apply_default(db, c, body.is_default)
+    db.commit()
+    return _collection_out(db, c)
+
+
+@router.put("/vector-collections/{collection_id}")
+def update_collection(collection_id: int, body: CollectionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+    c = get_or_404(db, VectorCollection, collection_id)
+    _check_collection(db, c.store, body, c.id)
+    c.name, c.description = body.name, body.description
+    _apply_default(db, c, body.is_default)
+    db.commit()
+    return _collection_out(db, c)
+
+
+@router.delete("/vector-collections/{collection_id}", status_code=204)
+def delete_collection(collection_id: int, db: Session = Depends(get_db)) -> None:
+    """Studio 등록만 지운다(Milvus의 실제 컬렉션·데이터는 그대로)."""
+    c = get_or_404(db, VectorCollection, collection_id)
+    if c.is_default:
+        raise HTTPException(400, "기본 컬렉션은 삭제할 수 없습니다. 다른 컬렉션을 기본으로 지정한 뒤 삭제하세요")
+    used = [p.name for p in db.scalars(select(Project).where(Project.vector_collection_id == c.id))]
+    if used:
+        raise HTTPException(400, f"이 컬렉션을 쓰는 프로젝트가 있습니다: {', '.join(used)}")
+    db.delete(c)
+    db.commit()
 
 
 @router.post("/vector-stores/{store_id}/health")
@@ -298,12 +351,12 @@ def _index_doc_ids(db: Session, ix: VectorIndex) -> list[int]:
     return sorted(set(db.scalars(select(ChunkRun.document_id).where(ChunkRun.id.in_(ix.run_ids)))))
 
 
-def existing_index_brief(db: Session, store: VectorStore | None) -> dict[str, Any] | None:
-    """저장소 컬렉션에 이미 만들어진 인덱스(임베딩 모델을 고정하는 데 씀)."""
-    if store is None or not store.collection:
+def existing_index_brief(db: Session, coll: VectorCollection | None) -> dict[str, Any] | None:
+    """컬렉션에 이미 만들어진 인덱스(임베딩 모델을 고정하는 데 씀)."""
+    if coll is None:
         return None
-    ix = db.scalar(select(VectorIndex).where(VectorIndex.store_id == store.id,
-                                             VectorIndex.collection == store.collection)
+    ix = db.scalar(select(VectorIndex).where(VectorIndex.store_id == coll.store_id,
+                                             VectorIndex.collection == coll.name)
                    .order_by(VectorIndex.id.desc()))
     if ix is None:
         return None
@@ -314,10 +367,10 @@ def existing_index_brief(db: Session, store: VectorStore | None) -> dict[str, An
 
 
 def target_for_project(db: Session, project_id: int | None, tree: dict | None = None) -> dict[str, Any]:
-    """프로젝트(또는 미분류)의 적재 대상: 저장소·컬렉션·출처와 그 컬렉션의 기존 인덱스."""
+    """프로젝트(또는 미분류)의 적재 대상: 연결·컬렉션·출처와 그 컬렉션의 기존 인덱스."""
     tree = tree if tree is not None else load_tree(db)
-    store, source = resolve_vector_store(db, tree, project_id)
-    return {"store": store_brief(store), "source": source, "existing_index": existing_index_brief(db, store)}
+    coll, source = resolve_collection(db, tree, project_id)
+    return {"store": target_brief(coll), "source": source, "existing_index": existing_index_brief(db, coll)}
 
 
 @router.get("/index-target")
@@ -338,7 +391,7 @@ def create_index(body: IndexIn, background: BackgroundTasks, db: Session = Depen
     if body.store_id is None:
         target = target_for_project(db, db.get(Document, run.document_id).project_id)
         if target["store"] is None:
-            raise HTTPException(400, "적재할 벡터 저장소가 없습니다. '벡터 저장소'에서 기본 저장소를 지정하세요")
+            raise HTTPException(400, "적재할 컬렉션이 없습니다. '벡터 저장소'에서 기본 컬렉션을 지정하세요")
         store_id, collection = target["store"]["id"], target["store"]["collection"]
         mode, replace_document = "append", True
     else:
@@ -358,7 +411,7 @@ def append_run(index_id: int, body: AppendIn, background: BackgroundTasks, db: S
     target = target_for_project(db, db.get(Document, run.document_id).project_id)
     store = target["store"]
     if store is not None and (store["id"] != ix.store_id or store["collection"] != ix.collection):
-        raise HTTPException(400, f"이 문서는 '{store['name']}' 저장소({store['collection']})에 적재하도록 설정되어 있습니다")
+        raise HTTPException(400, f"이 문서는 '{store['name']}' 저장소의 '{store['collection']}' 컬렉션에 적재하도록 설정되어 있습니다")
     if ix.status in ("queued", "running"):
         raise HTTPException(409, "이 컬렉션에 적재가 진행 중입니다. 끝난 뒤 다시 시도하세요")
     ix.status = "queued"

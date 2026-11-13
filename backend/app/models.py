@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -94,8 +94,10 @@ class Project(TimestampMixin, Base):
     params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     settings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # 청크를 적재할 벡터 저장소(연결+컬렉션). None이면 상위 상속, 끝까지 없으면 기본 저장소
+    # (구버전 호환) 저장소 단위로 지정하던 값. 시작 시 vector_collection_id로 옮긴다.
     vector_store_id: Mapped[int | None] = mapped_column(ForeignKey("vector_stores.id"), nullable=True)
+    # 청크를 적재할 컬렉션. None이면 상위 상속, 끝까지 없으면 기본 컬렉션
+    vector_collection_id: Mapped[int | None] = mapped_column(ForeignKey("vector_collections.id"), nullable=True)
     # ---- 메타데이터·권한 (벡터 DB 적재 시 청크에 함께 저장)
     # 자유 키-값. 상위 값을 물려받고 같은 키는 하위 값이 우선
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -253,12 +255,28 @@ class VectorStore(TimestampMixin, Base):
     # TLS(https://) 접속 시 신뢰할 CA 인증서 파일 경로(사설 CA일 때)와 인증서 검증용 호스트명 재지정
     tls_ca_path: Mapped[str] = mapped_column(String(1000), default="")
     tls_server_name: Mapped[str] = mapped_column(String(300), default="")
-    # 적재할 컬렉션. 저장소 = 연결 + 컬렉션. 프로젝트가 저장소를 지정하면 그 프로젝트 문서는 이 컬렉션에 적재된다.
+    # (구버전 호환) 저장소 = 연결 + 컬렉션 하나였을 때의 값. 시작 시 vector_collections로 옮긴 뒤에는 쓰지 않는다.
     collection: Mapped[str | None] = mapped_column(String(255), default="")
-    # 기본 저장소: 미분류 문서와 저장소를 지정하지 않은 프로젝트의 문서가 적재되는 곳(하나만)
     is_default: Mapped[bool | None] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    collections: Mapped[list["VectorCollection"]] = relationship(
+        back_populates="store", cascade="all, delete-orphan", order_by="VectorCollection.name")
+
+
+class VectorCollection(TimestampMixin, Base):
+    """벡터 저장소(연결) 아래의 적재 컬렉션. 프로젝트는 컬렉션을 지정하고, 지정이 없으면 기본 컬렉션에 적재한다."""
+
+    __tablename__ = "vector_collections"
+    __table_args__ = (UniqueConstraint("store_id", "name", name="uq_vector_collection_store_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    store_id: Mapped[int] = mapped_column(ForeignKey("vector_stores.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    # 기본 컬렉션: 미분류 문서와 컬렉션을 지정하지 않은 프로젝트의 문서가 적재되는 곳(전체에서 하나)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    store: Mapped[VectorStore] = relationship(back_populates="collections")
 
 
 class VectorIndex(TimestampMixin, Base):

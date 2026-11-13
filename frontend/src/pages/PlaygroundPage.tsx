@@ -105,7 +105,7 @@ export default function PlaygroundPage() {
         params: Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')),
         settings: { max_tokens: settings.max_tokens, min_tokens: settings.min_tokens, window_tokens: settings.window_tokens,
                     exclude_types: settings.exclude_types, retries: settings.retries, auto_fix: settings.auto_fix },
-        doc_type: settings.doc_type || p.doc_type, vector_store_id: p.vector_store_id,
+        doc_type: settings.doc_type || p.doc_type, vector_collection_id: p.vector_collection_id,
         meta: p.meta, permissions: p.permissions, permission_mode: p.permission_mode,
       })
       await project.reload()

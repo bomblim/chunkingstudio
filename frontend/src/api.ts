@@ -2,7 +2,7 @@ import type {
   IndexPlan,
   IndexTarget,
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
-  Project, ProjectTree, PromptVersion, QueryResult, RunDetail, RunSummary, VectorIndex, VectorStore,
+  Project, ProjectTree, PromptVersion, QueryResult, RunDetail, RunSummary, VectorCollection, VectorIndex, VectorStore,
 } from './types'
 
 export class ApiError extends Error {
@@ -107,7 +107,8 @@ export const api = {
 }
 
 export type EmbeddingModelInput = Omit<EmbeddingModel, 'id' | 'last_health' | 'blocked'>
-export type VectorStoreInput = Omit<VectorStore, 'id' | 'last_health' | 'projects'>
+export type VectorStoreInput = Omit<VectorStore, 'id' | 'last_health' | 'collections'>
+export type CollectionInput = { name: string; description: string; is_default: boolean }
 
 /** 적재 화면의 기본 임베딩 텍스트 템플릿: "제목 + 요약 + 본문" (서버 EMBED_TEMPLATES와 같은 값) */
 export const DEFAULT_EMBED_TEMPLATE = '{title}\n{summary}\n\n{text}'
@@ -121,6 +122,9 @@ export const vapi = {
   vectorStores: () => get<VectorStore[]>('/api/vector-stores'),
   createVectorStore: (s: VectorStoreInput) => post<VectorStore>('/api/vector-stores', s),
   updateVectorStore: (id: number, s: VectorStoreInput) => put<VectorStore>(`/api/vector-stores/${id}`, s),
+  createCollection: (storeId: number, c: CollectionInput) => post<VectorCollection>(`/api/vector-stores/${storeId}/collections`, c),
+  updateCollection: (id: number, c: CollectionInput) => put<VectorCollection>(`/api/vector-collections/${id}`, c),
+  deleteCollection: (id: number) => del(`/api/vector-collections/${id}`),
   vectorStoreHealth: (id: number) => post<VectorStore['last_health']>(`/api/vector-stores/${id}/health`),
 
   indexMeta: () => get<{ templates: { label: string; template: string }[]; template_fields: string[]; metrics: string[]; modes: string[] }>('/api/indexes/meta'),
@@ -135,7 +139,7 @@ export const vapi = {
   query: (id: number, body: { query: string; top_k: number; filter: string; principals?: string[] | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }
 
-export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'vector_store_id' | 'meta' | 'permissions' | 'permission_mode'>
+export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'vector_collection_id' | 'meta' | 'permissions' | 'permission_mode'>
 
 export const papi = {
   projects: () => get<ProjectTree>('/api/projects'),
