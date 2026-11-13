@@ -250,7 +250,8 @@ class RerankModel(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True)
-    # tei(/rerank) | cohere_compatible(/rerank, Cohere 형식: vLLM·Infinity·Jina·Cohere) | mock
+    # tei(/rerank) | cohere_compatible(/rerank, Cohere 형식: vLLM·Infinity·Jina·Cohere)
+    # | nvidia_nim(/ranking, NVIDIA NeMo Retriever·Nemotron 리랭크) | mock
     provider: Mapped[str] = mapped_column(String(50))
     engine: Mapped[str] = mapped_column(String(50), default="")
     base_url: Mapped[str] = mapped_column(String(1000), default="")

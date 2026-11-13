@@ -287,7 +287,7 @@ export interface EmbeddingModel {
 export interface RerankModel {
   id: number
   name: string
-  provider: 'tei' | 'cohere_compatible' | 'mock'
+  provider: 'tei' | 'cohere_compatible' | 'nvidia_nim' | 'mock'
   engine: string
   base_url: string
   model_id: string

@@ -7,10 +7,11 @@ const EMPTY: RerankModelInput = {
   name: '', provider: 'tei', engine: 'tei', base_url: 'http://localhost:8081', model_id: '', api_key_env: '',
   is_external: false, max_input_tokens: 512, batch_size: 32, document_template: '{text}', extra_params: {}, enabled: true,
 }
-const ENGINES = ['tei', 'vllm', 'infinity', 'xinference', 'cohere', 'jina', 'other']
+const ENGINES = ['tei', 'vllm', 'nim', 'infinity', 'xinference', 'cohere', 'jina', 'other']
 const PROVIDER_LABEL: Record<RerankModel['provider'], string> = {
   tei: 'TEI (/rerank)',
   cohere_compatible: 'Cohere 형식 (/rerank)',
+  nvidia_nim: 'NVIDIA NIM (/ranking)',
   mock: 'Mock (오프라인)',
 }
 const TEMPLATES = [
@@ -39,7 +40,7 @@ export default function RerankModelsPage() {
           <p>
             벡터 검색으로 가져온 후보 청크를 질의와 함께 다시 점수 매기는 cross-encoder 모델을 등록합니다.
             "벡터 인덱스·질의"에서 리랭크 모델을 고르면 후보를 재정렬해 상위 결과만 보여 줍니다.
-            TEI <code>/rerank</code>와 Cohere 형식 <code>/rerank</code>(vLLM·Infinity·Xinference·Jina·Cohere)를 지원합니다.
+            TEI <code>/rerank</code>, Cohere 형식 <code>/rerank</code>(vLLM·Infinity·Xinference·Jina·Cohere), NVIDIA NIM <code>/v1/ranking</code>(Nemotron 리랭크)을 지원합니다.
           </p>
         </div>
         <button className="primary" onClick={() => setEdit({ data: { ...EMPTY } })}>리랭크 모델 등록</button>
@@ -108,7 +109,7 @@ function RerankForm({ initial, id, onClose, onSaved }: { initial: RerankModelInp
   }
 
   return (
-    <Modal wide title={id ? '리랭크 모델 수정' : '리랭크 모델 등록'} onClose={onClose} footer={<><button onClick={onClose}>취소</button><button className="primary" disabled={!d.name || (d.provider === 'cohere_compatible' && !d.model_id)} onClick={() => void save()}>저장</button></>}>
+    <Modal wide title={id ? '리랭크 모델 수정' : '리랭크 모델 등록'} onClose={onClose} footer={<><button onClick={onClose}>취소</button><button className="primary" disabled={!d.name || ((d.provider === 'cohere_compatible' || d.provider === 'nvidia_nim') && !d.model_id)} onClick={() => void save()}>저장</button></>}>
       <ErrorBanner error={error} />
       <div className="grid-3">
         <label className="field">이름<input value={d.name} onChange={(e) => set('name', e.target.value)} /></label>
@@ -123,11 +124,11 @@ function RerankForm({ initial, id, onClose, onSaved }: { initial: RerankModelInp
         {d.provider !== 'mock' && (
           <label className="field">Base URL
             <input value={d.base_url} onChange={(e) => set('base_url', e.target.value)} placeholder={d.provider === 'tei' ? 'http://localhost:8081' : 'http://localhost:8000/v1'} />
-            <span className="small muted">{'{Base URL}'}/rerank 로 호출</span>
+            <span className="small muted">{'{Base URL}'}{d.provider === 'nvidia_nim' ? '/ranking' : '/rerank'} 로 호출</span>
           </label>
         )}
         <label className="field">모델 ID{d.provider === 'tei' && <span className="small muted"> (TEI는 선택)</span>}
-          <input value={d.model_id} onChange={(e) => set('model_id', e.target.value)} placeholder="BAAI/bge-reranker-v2-m3" />
+          <input value={d.model_id} onChange={(e) => set('model_id', e.target.value)} placeholder={d.provider === 'nvidia_nim' ? 'nvidia/llama-nemotron-rerank-1b-v2' : 'BAAI/bge-reranker-v2-m3'} />
         </label>
         {d.provider !== 'mock' && <label className="field">API 키 환경변수<input value={d.api_key_env} onChange={(e) => set('api_key_env', e.target.value)} placeholder="키 없는 자체 서빙이면 비움" /></label>}
         <label className="field">최대 입력 토큰 (질의+문서)<input type="number" value={d.max_input_tokens} onChange={(e) => set('max_input_tokens', Number(e.target.value))} /></label>
@@ -138,7 +139,7 @@ function RerankForm({ initial, id, onClose, onSaved }: { initial: RerankModelInp
         <div className="row">{TEMPLATES.map((t) => <button key={t.label} className={`sm ${d.document_template === t.template ? 'primary' : ''}`} onClick={() => set('document_template', t.template)}>{t.label}</button>)}</div>
         <textarea rows={2} value={d.document_template} onChange={(e) => set('document_template', e.target.value)} />
       </div>
-      <label className="field" style={{ marginTop: 8 }}>추가 요청 파라미터 (JSON, 요청 본문에 병합)<textarea rows={2} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={d.provider === 'tei' ? '{"raw_scores": false}' : '{"max_tokens_per_doc": 4096}'} /></label>
+      <label className="field" style={{ marginTop: 8 }}>추가 요청 파라미터 (JSON, 요청 본문에 병합)<textarea rows={2} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={d.provider === 'tei' ? '{"raw_scores": false}' : d.provider === 'nvidia_nim' ? '{"truncate": "NONE"}' : '{"max_tokens_per_doc": 4096}'} /></label>
       <div className="row" style={{ marginTop: 8 }}>
         <label className="check"><input type="checkbox" checked={d.is_external} onChange={(e) => set('is_external', e.target.checked)} />외부(상용) API — 폐쇄망 모드에서 차단</label>
         <label className="check"><input type="checkbox" checked={d.enabled} onChange={(e) => set('enabled', e.target.checked)} />활성</label>

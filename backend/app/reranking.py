@@ -5,6 +5,9 @@
 - tei: Hugging Face Text Embeddings Inference  POST {base_url}/rerank  {"query", "texts"} → [{"index", "score"}]
 - cohere_compatible: POST {base_url}/rerank  {"model", "query", "documents", "top_n"} → {"results": [{"index", "relevance_score"}]}
   vLLM(--task score, /v1/rerank), Infinity, Xinference, Jina, Cohere 등 Cohere 형식 엔드포인트.
+- nvidia_nim: NVIDIA NeMo Retriever Reranking NIM(Nemotron 리랭크)  POST {base_url}/ranking
+  {"model", "query": {"text"}, "passages": [{"text"}], "truncate"} → {"rankings": [{"index", "logit"}]}
+  한 요청 최대 512개 후보, 점수는 정규화하지 않은 logit(클수록 관련 높음).
 - mock: 오프라인 개발용. 질의와 문서의 글자 2-gram 겹침 비율(의미 판단은 아님).
 """
 from __future__ import annotations
@@ -19,7 +22,8 @@ from .config import settings
 from .models import RerankModel
 from .tokens import estimate_tokens
 
-PROVIDERS = ("tei", "cohere_compatible", "mock")
+PROVIDERS = ("tei", "cohere_compatible", "nvidia_nim", "mock")
+NIM_MAX_PASSAGES = 512
 TEMPLATE_FIELDS = ("text", "title", "section_path", "document_title")
 
 
@@ -68,12 +72,16 @@ def rerank(model: RerankModel, query: str, documents: list[str]) -> RerankResult
     started = time.monotonic()
     scores: list[float] = []
     batch = max(1, model.batch_size or 32)
+    if model.provider == "nvidia_nim":
+        batch = min(batch, NIM_MAX_PASSAGES)
     for start in range(0, len(documents), batch):
         part = documents[start : start + batch]
         if model.provider == "mock":
             scores.extend(_mock_score(query, d) for d in part)
         elif model.provider == "tei":
             scores.extend(_tei(model, query, part))
+        elif model.provider == "nvidia_nim":
+            scores.extend(_nvidia_nim(model, query, part))
         else:
             scores.extend(_cohere_compatible(model, query, part))
     return RerankResult(scores, int((time.monotonic() - started) * 1000), warnings)
@@ -89,10 +97,10 @@ def _headers(model: RerankModel) -> dict[str, str]:
     return headers
 
 
-def _post(model: RerankModel, body: dict) -> object:
+def _post(model: RerankModel, body: dict, path: str = "/rerank") -> object:
     if not model.base_url:
         raise RerankError("base_url이 필요합니다 (예: http://localhost:8081 또는 http://localhost:8000/v1)")
-    url = model.base_url.rstrip("/") + "/rerank"
+    url = model.base_url.rstrip("/") + path
     try:
         resp = httpx.post(url, json=body, headers=_headers(model), timeout=httpx.Timeout(120.0, connect=10.0))
     except httpx.HTTPError as exc:
@@ -133,6 +141,16 @@ def _cohere_compatible(model: RerankModel, query: str, docs: list[str]) -> list[
         raise RerankError(f"Cohere 형식 리랭크 응답이 아닙니다: {str(data)[:300]}")
     key = "relevance_score" if results and "relevance_score" in results[0] else "score"
     return _collect(results, len(docs), key)
+
+
+def _nvidia_nim(model: RerankModel, query: str, docs: list[str]) -> list[float]:
+    body = {"model": model.model_id, "query": {"text": query}, "passages": [{"text": d} for d in docs],
+            "truncate": "END", **(model.extra_params or {})}
+    data = _post(model, body, "/ranking")
+    rankings = data.get("rankings") if isinstance(data, dict) else None
+    if not isinstance(rankings, list):
+        raise RerankError(f"NIM 리랭크 응답 형식이 아닙니다(rankings 없음): {str(data)[:300]}")
+    return _collect(rankings, len(docs), "logit")
 
 
 def _mock_score(query: str, doc: str) -> float:

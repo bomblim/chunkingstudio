@@ -116,3 +116,24 @@ def test_rerank_model_api_and_query_option(client):
     bad = client.post(f"/api/indexes/{ix['id']}/query", json={"query": "q", "rerank_model_id": mock["id"],
                                                                "rerank_candidates": 0})
     assert bad.status_code == 400
+
+
+def test_nvidia_nim_ranking(monkeypatch):
+    seen = {}
+
+    def fake_post(url, json, headers, timeout):
+        seen.update(url=url, body=json)
+        rankings = [{"index": 2, "logit": 3.5}, {"index": 0, "logit": -1.25}, {"index": 1, "logit": -7.0}]
+        return httpx.Response(200, json={"rankings": rankings, "usage": {"prompt_tokens": 10, "total_tokens": 10}},
+                              request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    m = _model(provider="nvidia_nim", base_url="http://nim:8000/v1", model_id="nvidia/llama-nemotron-rerank-1b-v2",
+               batch_size=1000)
+    res = rerank(m, "질의", ["a", "b", "c"])
+    assert seen["url"] == "http://nim:8000/v1/ranking"
+    assert seen["body"]["model"] == "nvidia/llama-nemotron-rerank-1b-v2"
+    assert seen["body"]["query"] == {"text": "질의"}
+    assert seen["body"]["passages"] == [{"text": "a"}, {"text": "b"}, {"text": "c"}]
+    assert seen["body"]["truncate"] == "END" and "top_n" not in seen["body"]
+    assert res.scores == [-1.25, -7.0, 3.5]

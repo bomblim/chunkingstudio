@@ -102,7 +102,7 @@ def embedding_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, 
 # ------------------------------------------------------------------ 리랭크 모델
 class RerankModelIn(BaseModel):
     name: str
-    provider: str = "tei"  # tei | cohere_compatible | mock
+    provider: str = "tei"  # tei | cohere_compatible | nvidia_nim | mock
     engine: str = ""
     base_url: str = ""
     model_id: str = ""
@@ -126,8 +126,8 @@ def _check_rerank_body(db: Session, body: RerankModelIn, model_id: int | None = 
         raise HTTPException(400, f"알 수 없는 provider: {body.provider} (가능: {', '.join(RERANK_PROVIDERS)})")
     if not body.name.strip():
         raise HTTPException(400, "이름을 입력하세요")
-    if body.provider == "cohere_compatible" and not body.model_id.strip():
-        raise HTTPException(400, "Cohere 형식 엔드포인트는 모델 ID가 필요합니다")
+    if body.provider in ("cohere_compatible", "nvidia_nim") and not body.model_id.strip():
+        raise HTTPException(400, "Cohere 형식·NVIDIA NIM 엔드포인트는 모델 ID가 필요합니다")
     dup = db.scalar(select(RerankModel).where(RerankModel.name == body.name, RerankModel.id != (model_id or 0)))
     if dup:
         raise HTTPException(409, "같은 이름의 리랭크 모델이 있습니다")
