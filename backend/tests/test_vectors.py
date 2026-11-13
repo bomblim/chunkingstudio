@@ -75,10 +75,16 @@ def test_index_and_query_memory_store(client):
     assert "와이파이" in top["text"]  # 청크 원문이 함께 저장·반환됨
     assert top["metadata"]["element_ids"] and top["run_id"] == run["id"]
 
-    # 같은 실행을 append로 다시 넣어도 중복되지 않음
-    again = client.post(f"/api/indexes/{ix['id']}/append", json={"run_id": run["id"]}).json()
+    # 같은 실행을 append로 다시 넣어도 중복되지 않음 (저장소·컬렉션 직접 지정 = API 자동화 경로)
+    again = client.post("/api/indexes", json={
+        "run_id": run["id"], "store_id": store["id"], "embedding_model_id": emb["id"], "collection": "test_mem",
+        "mode": "append",
+    }).json()
+    assert again["id"] == ix["id"]
     again = _wait(client, f"/api/indexes/{again['id']}")
     assert again["chunk_count"] == len(run["chunks"])
+    # '실행 추가'는 문서의 프로젝트 저장소(미분류 → 기본 저장소)와 다른 컬렉션이면 거절
+    assert client.post(f"/api/indexes/{ix['id']}/append", json={"run_id": run["id"]}).status_code == 400
 
     dup = client.post("/api/indexes", json={
         "run_id": run["id"], "store_id": store["id"], "embedding_model_id": emb["id"], "collection": "test_mem",
@@ -101,7 +107,7 @@ def test_rejects_invalid_collection_name(client):
 def test_milvus_round_trip(client):
     run = _done_run(client)
     emb = _by_name(client.get("/api/embedding-models").json(), "Mock 임베딩 (오프라인)")
-    store = client.post("/api/vector-stores", json={"name": "milvus-test", "kind": "milvus",
+    store = client.post("/api/vector-stores", json={"name": "milvus-test", "kind": "milvus", "collection": "cs_pytest_milvus",
                                                     "uri": os.environ["CS_TEST_MILVUS_URI"]}).json()
     health = client.post(f"/api/vector-stores/{store['id']}/health").json()
     assert health["ok"], health

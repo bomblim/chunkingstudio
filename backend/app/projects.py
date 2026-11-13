@@ -7,9 +7,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Project, Prompt, PromptVersion
+from .models import Project, Prompt, PromptVersion, VectorStore
 
-PROFILE_FIELDS = ("method", "prompt_id", "prompt_version_id", "model_id", "params", "settings", "doc_type")
+PROFILE_FIELDS = ("method", "prompt_id", "prompt_version_id", "model_id", "params", "settings", "doc_type",
+                  "vector_store_id")
 
 
 def load_tree(db: Session) -> dict[int, Project]:
@@ -86,6 +87,38 @@ def resolve_prompt_version(db: Session, prompt_id: int | None, prompt_version_id
         return None
     prod = [v for v in prompt.versions if v.status == "production"]
     return prod[-1] if prod else prompt.versions[-1]
+
+
+# ------------------------------------------------------------------ 적재 대상 벡터 저장소
+def default_vector_store(db: Session) -> VectorStore | None:
+    return db.scalar(select(VectorStore).where(VectorStore.is_default.is_(True)).order_by(VectorStore.id))
+
+
+def resolve_vector_store(db: Session, tree: dict[int, Project], project_id: int | None,
+                         default: VectorStore | None = None) -> tuple[VectorStore | None, dict[str, Any]]:
+    """문서(프로젝트)가 적재될 저장소: 프로젝트(상위 상속) 지정 → 없으면 기본 저장소.
+
+    반환: (저장소 또는 None, 출처 {"kind": "project"|"default", "project_id", "project_name", "reason"})
+    """
+    if project_id is not None and project_id in tree:
+        eff = effective_profile(tree, project_id)
+        sid = eff["vector_store_id"]
+        store = db.get(VectorStore, sid) if sid else None
+        if store is not None:
+            src = eff["sources"].get("vector_store_id")
+            return store, {"kind": "project", "project_id": src, "project_name": tree[src].name if src in tree else None}
+        reason = "프로젝트에 저장소 미지정"
+    else:
+        reason = "미분류 문서"
+    store = default if default is not None else default_vector_store(db)
+    return store, {"kind": "default", "project_id": None, "project_name": None, "reason": reason}
+
+
+def store_brief(store: VectorStore | None) -> dict[str, Any] | None:
+    if store is None:
+        return None
+    return {"id": store.id, "name": store.name, "kind": store.kind, "collection": store.collection or "",
+            "enabled": store.enabled, "is_default": bool(store.is_default)}
 
 
 # ------------------------------------------------------------------ 메타데이터·권한

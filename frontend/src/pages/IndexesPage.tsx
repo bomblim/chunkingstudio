@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, vapi } from '../api'
+import { DEFAULT_EMBED_TEMPLATE, api, vapi } from '../api'
 import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling } from '../components/ui'
 import type { QueryResult, VectorIndex } from '../types'
 
@@ -110,71 +110,73 @@ function CreateIndexModal({ presetRun, onClose, onCreated }: { presetRun?: numbe
   const { docId, runId, run, picker } = useRunPicker(presetRun)
   const meta = useAsync(() => vapi.indexMeta(), [])
   const models = useAsync(() => vapi.embeddingModels(true), [])
-  const stores = useAsync(() => vapi.vectorStores(), [])
+  const target = useAsync(() => (docId ? vapi.indexTarget({ document_id: docId }) : Promise.resolve(null)), [docId])
   const [modelId, setModelId] = useState<number>()
-  const [storeId, setStoreId] = useState<number>()
-  const [collection, setCollection] = useState('')
-  const [touched, setTouched] = useState(false)
-  const [template, setTemplate] = useState('{text}')
+  const [template, setTemplate] = useState(DEFAULT_EMBED_TEMPLATE)
   const [metric, setMetric] = useState('COSINE')
-  const [mode, setMode] = useState('create')
   const [error, setError] = useState('')
 
-  useEffect(() => { if (!modelId && models.data?.length) setModelId(models.data[0].id) }, [models.data, modelId])
+  const t = target.data
+  const existing = t?.existing_index ?? null
   useEffect(() => {
-    if (!storeId && stores.data?.length) setStoreId((stores.data.find((s) => s.kind === 'milvus' && s.enabled) ?? stores.data[0]).id)
-  }, [stores.data, storeId])
-  useEffect(() => { if (!touched && docId && runId) setCollection(`cs_doc${docId}_run${runId}`) }, [docId, runId, touched])
+    if (existing) {
+      setModelId(existing.embedding_model_id)
+      setTemplate(existing.embed_template)
+      setMetric(existing.metric)
+    } else if (!modelId && models.data?.length) setModelId(models.data[0].id)
+  }, [existing?.id, models.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const model = models.data?.find((m) => m.id === modelId)
-  const store = stores.data?.find((s) => s.id === storeId)
   const tooLong = model && run?.totals.max_tokens && run.totals.max_tokens > model.max_input_tokens
+  const already = existing && docId && existing.document_ids.includes(docId)
 
   const submit = async () => {
-    if (!runId || !modelId || !storeId) return
+    if (!runId || !modelId) return
     setError('')
     try {
-      onCreated(await vapi.createIndex({ run_id: runId, store_id: storeId, embedding_model_id: modelId, collection, embed_template: template, metric, mode }))
+      onCreated(await vapi.createIndex({ run_id: runId, embedding_model_id: modelId, embed_template: template, metric }))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }
 
   return (
-    <Modal wide title="청크 적재 (임베딩 → 벡터 저장소)" onClose={onClose} footer={<><button onClick={onClose}>취소</button><button className="primary" disabled={!runId || !modelId || !storeId || !collection} onClick={() => void submit()}>적재 시작</button></>}>
-      <ErrorBanner error={error} />
+    <Modal wide title="청크 적재 (임베딩 → 벡터 저장소)" onClose={onClose} footer={<><button onClick={onClose}>취소</button><button className="primary" disabled={!runId || !modelId || !t?.store || !t.store.enabled} onClick={() => void submit()}>적재 시작</button></>}>
+      <ErrorBanner error={error || target.error} />
       {picker}
-      <div className="grid-3" style={{ marginTop: 8 }}>
+      <div className="card" style={{ margin: '8px 0', padding: 10 }}>
+        <div className="small muted">적재 위치 — 문서가 속한 프로젝트의 벡터 저장소 (프로젝트 설정에서 변경)</div>
+        {t?.store ? (
+          <div className="row" style={{ gap: 8, marginTop: 4 }}>
+            <b>{t.store.name}</b><span className="mono">{t.store.collection}</span>
+            {t.source.kind === 'default'
+              ? <Badge kind="accent">기본 저장소 · {t.source.reason}</Badge>
+              : <span className="small muted">프로젝트 '{t.source.project_name}' 설정</span>}
+            {!t.store.enabled && <Badge kind="warn">비활성 저장소</Badge>}
+            <span className="small muted">{existing ? `기존 청크 ${existing.chunk_count}개` : '컬렉션 새로 생성'}</span>
+          </div>
+        ) : t && <div className="banner warn small" style={{ margin: '4px 0 0' }}>적재할 저장소가 없습니다. '벡터 저장소'에서 기본 저장소를 지정하세요.</div>}
+        {already && <div className="small" style={{ color: 'var(--warn)', marginTop: 4 }}>이 문서는 이미 적재되어 있습니다. 적재하면 이 문서의 이전 청크를 지우고 선택한 실행으로 교체합니다.</div>}
+      </div>
+      <div className="grid-3">
         <label className="field">임베딩 모델
-          <select value={modelId ?? ''} onChange={(e) => setModelId(Number(e.target.value))}>
+          <select value={modelId ?? ''} disabled={!!existing} onChange={(e) => setModelId(Number(e.target.value))}>
             {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}{m.dimension ? ` (${m.dimension}d)` : ''}</option>)}
           </select>
         </label>
-        <label className="field">벡터 저장소
-          <select value={storeId ?? ''} onChange={(e) => setStoreId(Number(e.target.value))}>
-            {stores.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </label>
-        <label className="field">컬렉션 이름<input value={collection} onChange={(e) => { setTouched(true); setCollection(e.target.value) }} className="mono" /></label>
         <label className="field">유사도
-          <select value={metric} onChange={(e) => setMetric(e.target.value)}>{meta.data?.metrics.map((m) => <option key={m}>{m}</option>)}</select>
-        </label>
-        <label className="field">컬렉션이 이미 있으면
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="create">실패 (새로 만들 때만)</option>
-            <option value="append">추가 (같은 실행은 교체)</option>
-            <option value="recreate">삭제 후 다시 만들기</option>
-          </select>
+          <select value={metric} disabled={!!existing} onChange={(e) => setMetric(e.target.value)}>{meta.data?.metrics.map((m) => <option key={m}>{m}</option>)}</select>
         </label>
       </div>
+      {existing && <div className="small muted">기존 컬렉션에 추가하므로 그 컬렉션의 임베딩 모델({existing.embedding_model_name})·텍스트 템플릿·유사도를 그대로 씁니다.</div>}
       <div className="field" style={{ marginTop: 8 }}>
         <span className="small muted">임베딩 텍스트 템플릿 — 원문(text)은 그대로 저장하고, 벡터는 이 템플릿으로 만든 텍스트로 계산합니다</span>
-        <div className="row">{meta.data?.templates.map((t) => <button key={t.label} className={`sm ${template === t.template ? 'primary' : ''}`} onClick={() => setTemplate(t.template)}>{t.label}</button>)}</div>
-        <textarea rows={3} value={template} onChange={(e) => setTemplate(e.target.value)} />
+        <div className="row">{meta.data?.templates.map((tp) => <button key={tp.label} disabled={!!existing} className={`sm ${template === tp.template ? 'primary' : ''}`} onClick={() => setTemplate(tp.template)}>{tp.label}</button>)}</div>
+        <textarea rows={3} value={template} disabled={!!existing} onChange={(e) => setTemplate(e.target.value)} />
         <span className="small muted">사용 가능: {meta.data?.template_fields.map((f) => <code key={f} style={{ marginRight: 6 }}>{`{${f}}`}</code>)}</span>
       </div>
       {tooLong && <div className="banner warn" style={{ marginTop: 8 }}>가장 큰 청크(~{run?.totals.max_tokens} 토큰)가 임베딩 모델 최대 입력({model?.max_input_tokens} 토큰)을 넘습니다. 잘리거나 실패할 수 있습니다.</div>}
-      {store?.kind === 'memory' && <div className="banner info small" style={{ marginTop: 8 }}>메모리 저장소는 개발용입니다. 필터 검색은 지원하지 않습니다.</div>}
+      {t?.store?.kind === 'memory' && <div className="banner info small" style={{ marginTop: 8 }}>메모리 저장소는 개발용입니다. 필터 검색은 지원하지 않습니다.</div>}
     </Modal>
   )
 }

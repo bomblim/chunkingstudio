@@ -1,5 +1,6 @@
 import type {
   IndexPlan,
+  IndexTarget,
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
   Project, ProjectTree, PromptVersion, QueryResult, RunDetail, RunSummary, VectorIndex, VectorStore,
 } from './types'
@@ -106,7 +107,10 @@ export const api = {
 }
 
 export type EmbeddingModelInput = Omit<EmbeddingModel, 'id' | 'last_health' | 'blocked'>
-export type VectorStoreInput = Omit<VectorStore, 'id' | 'last_health'>
+export type VectorStoreInput = Omit<VectorStore, 'id' | 'last_health' | 'projects'>
+
+/** 적재 화면의 기본 임베딩 텍스트 템플릿: "제목 + 요약 + 본문" (서버 EMBED_TEMPLATES와 같은 값) */
+export const DEFAULT_EMBED_TEMPLATE = '{title}\n{summary}\n\n{text}'
 
 export const vapi = {
   embeddingModels: (usableOnly = false) => get<EmbeddingModel[]>(`/api/embedding-models${qs({ usable_only: usableOnly })}`),
@@ -122,14 +126,16 @@ export const vapi = {
   indexMeta: () => get<{ templates: { label: string; template: string }[]; template_fields: string[]; metrics: string[]; modes: string[] }>('/api/indexes/meta'),
   indexes: () => get<VectorIndex[]>('/api/indexes'),
   index: (id: number) => get<VectorIndex>(`/api/indexes/${id}`),
-  createIndex: (body: { run_id: number; store_id: number; embedding_model_id: number; collection: string; name?: string; embed_template: string; metric: string; mode: string }) =>
+  /** 저장소·컬렉션은 문서의 프로젝트 설정으로 정해진다(미분류는 기본 저장소) */
+  indexTarget: (q: { document_id?: number; project_id?: number }) => get<IndexTarget>(`/api/index-target${qs(q)}`),
+  createIndex: (body: { run_id: number; embedding_model_id: number; embed_template: string; metric: string }) =>
     post<VectorIndex>('/api/indexes', body),
   appendRun: (id: number, runId: number) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
   deleteIndex: (id: number, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
   query: (id: number, body: { query: string; top_k: number; filter: string; principals?: string[] | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }
 
-export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'meta' | 'permissions' | 'permission_mode'>
+export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'vector_store_id' | 'meta' | 'permissions' | 'permission_mode'>
 
 export const papi = {
   projects: () => get<ProjectTree>('/api/projects'),
@@ -141,8 +147,8 @@ export const papi = {
     post<{ run_ids: number[]; document_count: number; method: string }>(`/api/projects/${id}/run-all`, body),
   indexPlan: (id: number, includeDescendants = true) =>
     get<IndexPlan>(`/api/projects/${id}/index-plan${qs({ include_descendants: includeDescendants })}`),
-  indexAll: (id: number, body: { store_id: number; embedding_model_id: number; collection: string; name?: string; embed_template: string; metric: string; mode: string; include_descendants: boolean }) =>
-    post<{ index: VectorIndex; document_count: number; skipped: IndexPlan['skipped'] }>(`/api/projects/${id}/index-all`, body),
+  indexAll: (id: number, body: { embedding_model_id: number; embed_template: string; metric: string; mode: 'append' | 'recreate'; include_descendants: boolean }) =>
+    post<{ indexes: VectorIndex[]; document_count: number; skipped: IndexPlan['skipped'] }>(`/api/projects/${id}/index-all`, body),
   moveDocuments: (documentIds: number[], projectId: number | null) =>
     post<{ moved: number }>('/api/documents/move', { document_ids: documentIds, project_id: projectId }),
   patchDocument: (id: number, body: { title?: string; doc_type?: string; project_id?: number; clear_project?: boolean }) =>

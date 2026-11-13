@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { api, papi, vapi } from '../api'
+import { DEFAULT_EMBED_TEMPLATE, api, papi, vapi } from '../api'
 import { ProjectSettingsModal } from '../components/ProjectSettings'
 import { ProjectTreeView, projectOptions, type ProjectSelection } from '../components/ProjectTree'
 import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling } from '../components/ui'
@@ -128,6 +128,17 @@ export default function DocumentsPage() {
                     )}
                   </>
                 )}
+              </div>
+              <div className="row small" style={{ marginTop: 6, gap: 6 }}>
+                <span>벡터 저장소:</span>
+                {eff.vector_store ? (
+                  <>
+                    <b>{eff.vector_store.name}</b><span className="mono">{eff.vector_store.collection}</span>
+                    {eff.vector_store_source.kind === 'default'
+                      ? <span className="muted">(기본 저장소 — 프로젝트에 지정 안 함)</span>
+                      : eff.vector_store_source.project_id !== current.id && <span className="muted">(상속: {eff.vector_store_source.project_name})</span>}
+                  </>
+                ) : <Badge kind="warn">없음 — '벡터 저장소'에서 기본 저장소를 지정하세요</Badge>}
               </div>
               <div className="row small" style={{ marginTop: 6, gap: 6 }}>
                 <span>메타데이터:</span>
@@ -384,45 +395,49 @@ function ImportModal({ projects, defaultProjectId, onClose, onDone }: { projects
   )
 }
 
-/** 프로젝트 문서마다 가장 최근에 성공한 청킹 결과를 한 컬렉션에 일괄 적재 */
+/** 프로젝트 문서마다 가장 최근에 성공한 청킹 결과를, 각 문서의 프로젝트 저장소(컬렉션)에 일괄 적재 */
 function IndexAllModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [includeDesc, setIncludeDesc] = useState(true)
   const plan = useAsync(() => papi.indexPlan(project.id, includeDesc), [project.id, includeDesc])
   const meta = useAsync(() => vapi.indexMeta(), [])
   const models = useAsync(() => vapi.embeddingModels(true), [])
-  const stores = useAsync(() => vapi.vectorStores(), [])
   const [modelId, setModelId] = useState<number>()
-  const [storeId, setStoreId] = useState<number>()
-  const [collection, setCollection] = useState('')
-  const [template, setTemplate] = useState('{text}')
+  const [template, setTemplate] = useState(DEFAULT_EMBED_TEMPLATE)
   const [metric, setMetric] = useState('COSINE')
-  const [mode, setMode] = useState('recreate')
+  const [mode, setMode] = useState<'append' | 'recreate'>('append')
   const [error, setError] = useState('')
-  const [started, setStarted] = useState<VectorIndex | null>(null)
+  const [started, setStarted] = useState<VectorIndex[] | null>(null)
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => { if (!modelId && models.data?.length) setModelId(models.data[0].id) }, [models.data, modelId])
-  useEffect(() => {
-    if (!storeId && stores.data?.length) setStoreId((stores.data.find((s) => s.kind === 'milvus' && s.enabled) ?? stores.data[0]).id)
-  }, [stores.data, storeId])
-  useEffect(() => { if (!collection && plan.data) setCollection(plan.data.default_collection) }, [plan.data, collection])
-
-  const live = !!started && (started.status === 'queued' || started.status === 'running')
-  usePolling(async () => { if (started) setStarted(await vapi.index(started.id)) }, live, 1000)
 
   const items = plan.data?.items ?? []
   const skipped = plan.data?.skipped ?? []
-  const model = models.data?.find((m) => m.id === modelId)
-  const totalChunks = items.reduce((n, i) => n + (i.chunk_count ?? 0), 0)
+  const groups = plan.data?.groups ?? []
+  // 기존 컬렉션에 추가할 때는 그 컬렉션의 임베딩 모델을 그대로 써야 한다
+  const lockedModels = [...new Set(groups.map((g) => g.existing_index?.embedding_model_id).filter((x): x is number => !!x))]
+  const locked = mode === 'append' && lockedModels.length > 0
+  const modelConflict = mode === 'append' && lockedModels.length > 1
+  const shared = groups.filter((g) => g.others_in_collection > 0)
+
+  useEffect(() => {
+    if (locked && lockedModels.length === 1) setModelId(lockedModels[0])
+    else if (!modelId && models.data?.length) setModelId(models.data[0].id)
+  }, [models.data, locked, lockedModels.join(','), modelId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const live = !!started?.some((ix) => ix.status === 'queued' || ix.status === 'running')
+  usePolling(async () => { if (started) setStarted(await Promise.all(started.map((ix) => vapi.index(ix.id)))) }, live, 1000)
 
   const submit = async () => {
-    if (!modelId || !storeId) return
-    if (mode === 'recreate' && !confirm(`'${collection}' 컬렉션이 있으면 삭제하고 다시 만듭니다. 진행할까요?`)) return
+    if (!modelId) return
+    if (mode === 'recreate') {
+      const names = groups.map((g) => g.store.collection).join(', ')
+      const extra = shared.length ? `\n\n이 일괄 적재에 포함되지 않은 문서 ${shared.reduce((n, g) => n + g.others_in_collection, 0)}개도 함께 지워집니다.` : ''
+      if (!confirm(`컬렉션(${names})을 비우고 다시 적재합니다.${extra}\n진행할까요?`)) return
+    }
     setError('')
     setBusy(true)
     try {
-      const r = await papi.indexAll(project.id, { store_id: storeId, embedding_model_id: modelId, collection, embed_template: template, metric, mode, include_descendants: includeDesc })
-      setStarted(r.index)
+      const r = await papi.indexAll(project.id, { embedding_model_id: modelId, embed_template: template, metric, mode, include_descendants: includeDesc })
+      setStarted(r.indexes)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -433,45 +448,74 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
   const title = `일괄 적재 — ${project.path.join(' / ')}`
 
   if (started) {
-    const b = started.stats.batch
     return (
       <Modal wide title={title} onClose={onClose} footer={<><Link to="/indexes"><button>벡터 인덱스·질의로 이동</button></Link><button className="primary" onClick={onClose}>닫기</button></>}>
-        <div className="row" style={{ gap: 10 }}>
-          <StatusBadge status={started.status} />
-          <b className="mono">{started.collection}</b>
-          {b && <span>문서 {Math.min(b.done + (live ? 1 : 0), b.total)}/{b.total} · 성공 {b.succeeded}{b.failed.length ? ` · 실패 ${b.failed.length}` : ''}</span>}
-          <span className="muted">컬렉션 청크 {started.chunk_count}개</span>
-        </div>
-        {live && b?.current && (
-          <div className="small muted" style={{ marginTop: 6 }}>
-            처리 중: {b.current} ({started.progress.phase === 'inserting' ? '적재' : '임베딩'} {started.progress.done ?? 0}/{started.progress.total ?? 0})
-          </div>
-        )}
-        {started.status === 'failed' && <div className="banner error" style={{ marginTop: 8 }}>{started.error}</div>}
-        {started.warnings.map((w, i) => <div key={i} className="small" style={{ color: 'var(--warn)', marginTop: 4 }}>⚠ {w}</div>)}
-        {!!b?.failed.length && (
-          <table className="list" style={{ marginTop: 8 }}>
-            <thead><tr><th>실패한 문서</th><th>오류</th></tr></thead>
-            <tbody>{b.failed.map((f) => <tr key={f.document_id}><td>{f.title}</td><td className="small">{f.error}</td></tr>)}</tbody>
-          </table>
-        )}
-        {started.status === 'done' && <div className="banner info" style={{ marginTop: 8 }}>적재가 끝났습니다. "벡터 인덱스·질의"에서 이 컬렉션으로 질의를 테스트할 수 있습니다.</div>}
+        {started.map((ix) => {
+          const b = ix.stats.batch
+          const running = ix.status === 'queued' || ix.status === 'running'
+          return (
+            <div key={ix.id} className="card" style={{ margin: '0 0 8px', padding: 10 }}>
+              <div className="row" style={{ gap: 10 }}>
+                <StatusBadge status={ix.status} />
+                <b>{ix.store_name}</b><span className="mono">{ix.collection}</span>
+                {b && <span>문서 {Math.min(b.done + (running && b.current ? 1 : 0), b.total)}/{b.total} · 성공 {b.succeeded}{b.failed.length ? ` · 실패 ${b.failed.length}` : ''}</span>}
+                <span className="muted">컬렉션 청크 {ix.chunk_count}개</span>
+              </div>
+              {running && b?.current && (
+                <div className="small muted" style={{ marginTop: 6 }}>
+                  처리 중: {b.current} ({ix.progress.phase === 'inserting' ? '적재' : '임베딩'} {ix.progress.done ?? 0}/{ix.progress.total ?? 0})
+                </div>
+              )}
+              {running && !b?.current && <div className="small muted" style={{ marginTop: 6 }}>앞 저장소 적재가 끝나기를 기다리는 중</div>}
+              {ix.status === 'failed' && <div className="banner error" style={{ marginTop: 8 }}>{ix.error}</div>}
+              {ix.warnings.map((w, i) => <div key={i} className="small" style={{ color: 'var(--warn)', marginTop: 4 }}>⚠ {w}</div>)}
+              {!!b?.failed.length && (
+                <table className="list" style={{ marginTop: 8 }}>
+                  <thead><tr><th>실패한 문서</th><th>오류</th></tr></thead>
+                  <tbody>{b.failed.map((f) => <tr key={f.document_id}><td>{f.title}</td><td className="small">{f.error}</td></tr>)}</tbody>
+                </table>
+              )}
+            </div>
+          )
+        })}
+        {!live && started.every((ix) => ix.status === 'done') && <div className="banner info">적재가 끝났습니다. "벡터 인덱스·질의"에서 질의를 테스트할 수 있습니다.</div>}
       </Modal>
     )
   }
 
   return (
     <Modal wide title={title} onClose={onClose} footer={<><button onClick={onClose}>취소</button>
-      <button className="primary" disabled={busy || !items.length || !modelId || !storeId || !collection} onClick={() => void submit()}>{busy ? '시작 중…' : `문서 ${items.length}개 적재`}</button></>}>
+      <button className="primary" disabled={busy || !items.length || !modelId || modelConflict} onClick={() => void submit()}>{busy ? '시작 중…' : `문서 ${items.length}개 적재`}</button></>}>
       <ErrorBanner error={error || plan.error} />
       <p className="small muted" style={{ marginTop: 0 }}>
-        문서마다 <b>가장 최근에 성공한 청킹 실행</b>을 골라 한 컬렉션에 순서대로 적재합니다. 같은 문서의 이전 청크는 교체되어 중복되지 않습니다.
-        성공한 청킹이 없는 문서는 제외됩니다.
+        문서마다 <b>가장 최근에 성공한 청킹 실행</b>을 골라, 문서가 속한 프로젝트의 <b>벡터 저장소(컬렉션)</b>에 순서대로 적재합니다.
+        저장소를 지정하지 않은 프로젝트는 기본 저장소에 들어갑니다. 같은 문서의 이전 청크는 교체되어 중복되지 않습니다.
       </p>
       <label className="check small"><input type="checkbox" checked={includeDesc} onChange={(e) => setIncludeDesc(e.target.checked)} />하위 프로젝트 문서 포함</label>
-      <div className="scroll" style={{ maxHeight: 240, margin: '8px 0', border: '1px solid var(--border)', borderRadius: 6 }}>
+
+      {groups.length > 0 && (
+        <table className="list" style={{ margin: '8px 0' }}>
+          <thead><tr><th>적재 위치</th><th>컬렉션</th><th>문서</th><th>청크</th><th>기존 적재</th></tr></thead>
+          <tbody>
+            {groups.map((g) => (
+              <tr key={g.store.id}>
+                <td><b>{g.store.name}</b>{g.via_default && <> <Badge kind="accent">기본 저장소</Badge></>}</td>
+                <td className="mono">{g.store.collection}</td>
+                <td>{g.document_count}</td>
+                <td>{g.chunk_count}</td>
+                <td className="small">
+                  {g.existing_index ? <>청크 {g.existing_index.chunk_count}개 · {g.existing_index.embedding_model_name}</> : <span className="muted">없음 (새로 생성)</span>}
+                  {g.others_in_collection > 0 && <div className="muted">다른 문서 {g.others_in_collection}개 포함 ({g.other_titles.join(', ')}{g.others_in_collection > g.other_titles.length ? ' …' : ''})</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="scroll" style={{ maxHeight: 220, margin: '8px 0', border: '1px solid var(--border)', borderRadius: 6 }}>
         <table className="list">
-          <thead><tr><th>문서</th><th>프로젝트</th><th>적재할 청킹 실행</th><th>청크</th></tr></thead>
+          <thead><tr><th>문서</th><th>프로젝트</th><th>적재할 청킹 실행</th><th>청크</th><th>저장소</th></tr></thead>
           <tbody>
             {items.map((i) => (
               <tr key={i.document_id}>
@@ -482,48 +526,49 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
                   {i.note && <div style={{ color: 'var(--warn)' }}>{i.note}</div>}
                 </td>
                 <td>{i.chunk_count}</td>
+                <td className="small">{groups.find((g) => g.store.id === i.store_id)?.store.name}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {plan.data && !items.length && <div className="empty">성공한 청킹 실행이 있는 문서가 없습니다. 먼저 "일괄 청킹"을 실행하세요.</div>}
       </div>
-      <div className="small">적재 대상 <b>{items.length}</b>개 문서 · 청크 약 <b>{totalChunks}</b>개{skipped.length > 0 && <> · 제외 {skipped.length}개</>}</div>
       {skipped.length > 0 && (
-        <details style={{ marginTop: 4 }}>
+        <details>
           <summary className="small muted">제외된 문서 {skipped.length}개</summary>
           <ul className="small" style={{ margin: '4px 0' }}>{skipped.map((s) => <li key={s.document_id}>{s.title} — <span className="muted">{s.reason}</span></li>)}</ul>
         </details>
       )}
+
       <div className="grid-3" style={{ marginTop: 10 }}>
+        <label className="field">적재 방식
+          <select value={mode} onChange={(e) => setMode(e.target.value as 'append' | 'recreate')}>
+            <option value="append">추가 (같은 문서는 교체)</option>
+            <option value="recreate">컬렉션 비우고 다시 적재</option>
+          </select>
+        </label>
         <label className="field">임베딩 모델
-          <select value={modelId ?? ''} onChange={(e) => setModelId(Number(e.target.value))}>
+          <select value={modelId ?? ''} disabled={locked && !modelConflict} onChange={(e) => setModelId(Number(e.target.value))}>
             {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}{m.dimension ? ` (${m.dimension}d)` : ''}</option>)}
           </select>
+          {locked && !modelConflict && <span className="small muted">기존 컬렉션의 모델로 고정 (바꾸려면 '비우고 다시 적재')</span>}
         </label>
-        <label className="field">벡터 저장소
-          <select value={storeId ?? ''} onChange={(e) => setStoreId(Number(e.target.value))}>
-            {stores.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </label>
-        <label className="field">컬렉션 이름<input className="mono" value={collection} onChange={(e) => setCollection(e.target.value)} /></label>
         <label className="field">유사도
-          <select value={metric} onChange={(e) => setMetric(e.target.value)}>{meta.data?.metrics.map((m) => <option key={m}>{m}</option>)}</select>
-        </label>
-        <label className="field">컬렉션이 이미 있으면
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="recreate">삭제 후 다시 만들기</option>
-            <option value="append">추가 (같은 문서는 교체)</option>
-            <option value="create">실패 (새로 만들 때만)</option>
-          </select>
+          <select value={metric} disabled={locked} onChange={(e) => setMetric(e.target.value)}>{meta.data?.metrics.map((m) => <option key={m}>{m}</option>)}</select>
         </label>
         <label className="field">임베딩 텍스트
-          <select value={template} onChange={(e) => setTemplate(e.target.value)}>
+          <select value={template} disabled={locked} onChange={(e) => setTemplate(e.target.value)}>
             {meta.data?.templates.map((t) => <option key={t.label} value={t.template}>{t.label}</option>)}
           </select>
         </label>
       </div>
-      {model && <div className="small muted" style={{ marginTop: 4 }}>최대 입력 {model.max_input_tokens} 토큰을 넘는 청크는 잘리거나 실패할 수 있습니다.</div>}
+      {locked && <div className="small muted" style={{ marginTop: 4 }}>기존 컬렉션에 추가할 때는 그 컬렉션의 임베딩 모델·텍스트 템플릿·유사도를 그대로 씁니다.</div>}
+      {modelConflict && <div className="banner warn small" style={{ marginTop: 8 }}>저장소마다 기존 임베딩 모델이 달라 한 번에 추가할 수 없습니다. 하위 프로젝트를 나눠 적재하거나 '비우고 다시 적재'를 선택하세요.</div>}
+      {mode === 'recreate' && shared.length > 0 && (
+        <div className="banner warn small" style={{ marginTop: 8 }}>
+          비우는 컬렉션에 이 일괄 적재에 포함되지 않은 문서가 있습니다: {shared.map((g) => `${g.store.collection} ${g.others_in_collection}개`).join(', ')}. 함께 지워집니다.
+        </div>
+      )}
     </Modal>
   )
 }

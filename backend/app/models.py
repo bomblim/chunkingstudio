@@ -94,6 +94,8 @@ class Project(TimestampMixin, Base):
     params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     settings: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doc_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 청크를 적재할 벡터 저장소(연결+컬렉션). None이면 상위 상속, 끝까지 없으면 기본 저장소
+    vector_store_id: Mapped[int | None] = mapped_column(ForeignKey("vector_stores.id"), nullable=True)
     # ---- 메타데이터·권한 (벡터 DB 적재 시 청크에 함께 저장)
     # 자유 키-값. 상위 값을 물려받고 같은 키는 하위 값이 우선
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -251,6 +253,10 @@ class VectorStore(TimestampMixin, Base):
     # TLS(https://) 접속 시 신뢰할 CA 인증서 파일 경로(사설 CA일 때)와 인증서 검증용 호스트명 재지정
     tls_ca_path: Mapped[str] = mapped_column(String(1000), default="")
     tls_server_name: Mapped[str] = mapped_column(String(300), default="")
+    # 적재할 컬렉션. 저장소 = 연결 + 컬렉션. 프로젝트가 저장소를 지정하면 그 프로젝트 문서는 이 컬렉션에 적재된다.
+    collection: Mapped[str | None] = mapped_column(String(255), default="")
+    # 기본 저장소: 미분류 문서와 저장소를 지정하지 않은 프로젝트의 문서가 적재되는 곳(하나만)
+    is_default: Mapped[bool | None] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 

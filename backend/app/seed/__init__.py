@@ -98,10 +98,28 @@ def seed_vectors(db: Session) -> None:
         db.commit()
     if not db.scalar(select(VectorStore)):
         db.add_all([
-            VectorStore(name="Milvus 로컬", kind="milvus", uri=settings.milvus_uri),
-            VectorStore(name="메모리 (개발용)", kind="memory"),
+            VectorStore(name="Milvus 로컬", kind="milvus", uri=settings.milvus_uri, collection="cs_default",
+                        is_default=True),
+            VectorStore(name="메모리 (개발용)", kind="memory", collection="cs_memory"),
         ])
         db.commit()
+    ensure_store_defaults(db)
+
+
+def ensure_store_defaults(db: Session) -> None:
+    """컬렉션 개념 도입 전 DB 보정: 컬렉션 이름이 빈 저장소를 채우고, 기본 저장소가 없으면 하나를 지정한다."""
+    stores = list(db.scalars(select(VectorStore).order_by(VectorStore.id)))
+    if not stores:
+        return
+    if not any(s.is_default for s in stores):
+        pick = next((s for s in stores if s.kind == "milvus" and s.enabled), None) or stores[0]
+        pick.is_default = True
+    for s in stores:
+        if s.is_default is None:
+            s.is_default = False
+        if not s.collection:
+            s.collection = "cs_default" if s.is_default else f"cs_store{s.id}"
+    db.commit()
 
 
 UPSTAGE_PARSER_NAME = "upstage-parser"

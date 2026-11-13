@@ -94,7 +94,7 @@ def test_milvus_permission_filter(client):
         "elements": [{"element_id": "E1", "type": "paragraph", "text": "원격근무 보안 수칙은 모든 직원에게 공개된다."}]}}).json()
     client.patch(f"/api/documents/{secret_doc['id']}", json={"project_id": proj["id"]})
     emb = next(m for m in client.get("/api/embedding-models").json() if m["provider"] == "mock")
-    store = client.post("/api/vector-stores", json={"name": "milvus-access-test", "kind": "milvus",
+    store = client.post("/api/vector-stores", json={"name": "milvus-access-test", "kind": "milvus", "collection": "cs_pytest_access",
                                                     "uri": os.environ["CS_TEST_MILVUS_URI"]}).json()
     ix = None
     for i, d in enumerate((secret_doc, open_doc)):

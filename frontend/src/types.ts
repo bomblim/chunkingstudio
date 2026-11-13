@@ -292,9 +292,24 @@ export interface VectorStore {
   db_name: string
   tls_ca_path: string
   tls_server_name: string
+  /** 적재할 컬렉션 (저장소 = 연결 + 컬렉션) */
+  collection: string
+  /** 미분류 문서·저장소를 지정하지 않은 프로젝트가 쓰는 기본 저장소 */
+  is_default: boolean
   enabled: boolean
+  /** 이 저장소를 직접 지정한 프로젝트 이름 */
+  projects: string[]
   last_health: { ok?: boolean; message?: string; server_version?: string; collections?: string[]; latency_ms?: number; checked_at?: string }
 }
+
+export interface StoreBrief { id: number; name: string; kind: 'milvus' | 'memory'; collection: string; enabled: boolean; is_default: boolean }
+export interface StoreSource { kind: 'project' | 'default'; project_id: number | null; project_name: string | null; reason?: string }
+export interface ExistingIndexBrief {
+  id: number; status: string; chunk_count: number; embedding_model_id: number; embedding_model_name: string
+  embed_template: string; metric: string; document_ids: number[]
+}
+/** 문서·프로젝트의 적재 대상 */
+export interface IndexTarget { store: StoreBrief | null; source: StoreSource; existing_index: ExistingIndexBrief | null }
 
 export interface VectorIndex {
   id: number
@@ -367,6 +382,7 @@ export interface ProjectProfile {
   params: Record<string, unknown> | null
   settings: Partial<ChunkSettings> | null
   doc_type: string | null
+  vector_store_id: number | null
 }
 
 export type ProjectMeta = Record<string, string | number | boolean | null | (string | number | boolean)[]>
@@ -400,6 +416,8 @@ export interface Project extends ProjectProfile {
     resolved_prompt_version_id: number | null
     resolved_prompt_label: string | null
     model_name: string | null
+    vector_store: StoreBrief | null
+    vector_store_source: StoreSource
   }
 }
 
@@ -411,7 +429,8 @@ export interface ProjectTree {
 
 /** 프로젝트 일괄 적재 계획: 문서마다 가장 최근에 성공한 청킹 실행 */
 export interface IndexPlan {
-  items: { document_id: number; title: string; run_id: number; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string }[]
+  items: { document_id: number; title: string; run_id: number; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string; store_id: number; store_source: 'project' | 'default' }[]
+  /** 저장소(컬렉션)별 묶음 */
+  groups: { store: StoreBrief; document_count: number; chunk_count: number; via_default: boolean; existing_index: ExistingIndexBrief | null; others_in_collection: number; other_titles: string[] }[]
   skipped: { document_id: number; title: string; reason: string }[]
-  default_collection: string
 }
