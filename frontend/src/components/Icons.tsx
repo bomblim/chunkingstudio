@@ -10,16 +10,9 @@ function Svg({ children, size = 18 }: { children: ReactNode; size?: number }) {
   )
 }
 
-/** 로고: 문서를 청크 블록으로 나눈 모양 */
+/** 로고: favicon과 같은 파일(public/favicon.svg)을 그대로 쓴다 */
 export function LogoIcon({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <rect x="3" y="3" width="18" height="18" rx="5" fill="var(--accent)" />
-      <rect x="6.5" y="6.5" width="11" height="3" rx="1.2" fill="#fff" />
-      <rect x="6.5" y="10.6" width="7" height="3" rx="1.2" fill="#fff" opacity=".85" />
-      <rect x="6.5" y="14.6" width="9" height="3" rx="1.2" fill="#fff" opacity=".7" />
-    </svg>
-  )
+  return <img src="/favicon.svg" width={size} height={size} alt="" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }} />
 }
 
 export const icons = {
