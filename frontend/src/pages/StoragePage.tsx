@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { vapi } from '../api'
-import { Badge, ErrorBanner, Modal, Sid, useAsync } from '../components/ui'
+import { Badge, ErrorBanner, Modal, Sid, useAsync, useRefreshOnFocus } from '../components/ui'
 import type { CollectionContents, StoredChunk } from '../types'
 
 const PAGE = 30
@@ -30,6 +30,9 @@ export default function StoragePage() {
     [collId, docId, offset],
   )
   const c = contents.data
+  // 컬렉션 목록의 청크 수와 내용을 함께 최신으로 (다른 화면에서 비우기·적재한 뒤 돌아와도 맞게)
+  useEffect(() => { void stores.reload() }, [collId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useRefreshOnFocus(() => { void stores.reload(); void contents.reload() })
   const docTitle = c?.documents.find((d) => d.document_id === docId)?.title
 
   return (

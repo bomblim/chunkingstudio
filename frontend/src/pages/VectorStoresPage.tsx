@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { vapi, type CollectionInput, type VectorStoreInput } from '../api'
-import { Badge, ConfirmModal, ErrorBanner, Modal, useAsync } from '../components/ui'
+import { Badge, ConfirmModal, ErrorBanner, Modal, useAsync, useRefreshOnFocus } from '../components/ui'
 import type { VectorCollection, VectorStore } from '../types'
 
 const EMPTY: VectorStoreInput = { name: '', kind: 'milvus', uri: 'http://localhost:19530', token_env: '', db_name: '', tls_ca_path: '', tls_server_name: '', enabled: true }
 
 export default function VectorStoresPage() {
   const stores = useAsync(() => vapi.vectorStores(), [])
+  useRefreshOnFocus(() => { void stores.reload() })
   const [edit, setEdit] = useState<{ id?: string; data: VectorStoreInput } | null>(null)
   const [collEdit, setCollEdit] = useState<{ store: VectorStore; coll?: VectorCollection } | null>(null)
   const [busy, setBusy] = useState<string>()

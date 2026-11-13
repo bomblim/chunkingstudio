@@ -135,3 +135,15 @@ export function ConfirmModal({ title, children, confirmLabel = '확인', danger,
     </Modal>
   )
 }
+
+/** 다른 탭·창에서 돌아오면(포커스) fn을 다시 실행한다. 다른 화면에서 바꾼 수치가 남아 보이지 않도록 */
+export function useRefreshOnFocus(fn: () => void) {
+  const ref = useRef(fn)
+  ref.current = fn
+  useEffect(() => {
+    const onFocus = () => { if (document.visibilityState === 'visible') ref.current() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus) }
+  }, [])
+}
