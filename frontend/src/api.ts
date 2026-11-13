@@ -1,4 +1,5 @@
 import type {
+  IndexPlan,
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
   Project, ProjectTree, PromptVersion, QueryResult, RunDetail, RunSummary, VectorIndex, VectorStore,
 } from './types'
@@ -138,6 +139,10 @@ export const papi = {
   deleteProject: (id: number, moveToParent: boolean) => del(`/api/projects/${id}${qs({ move_to_parent: moveToParent })}`),
   runAll: (id: number, body: { include_descendants: boolean; only_without_run: boolean }) =>
     post<{ run_ids: number[]; document_count: number; method: string }>(`/api/projects/${id}/run-all`, body),
+  indexPlan: (id: number, includeDescendants = true) =>
+    get<IndexPlan>(`/api/projects/${id}/index-plan${qs({ include_descendants: includeDescendants })}`),
+  indexAll: (id: number, body: { store_id: number; embedding_model_id: number; collection: string; name?: string; embed_template: string; metric: string; mode: string; include_descendants: boolean }) =>
+    post<{ index: VectorIndex; document_count: number; skipped: IndexPlan['skipped'] }>(`/api/projects/${id}/index-all`, body),
   moveDocuments: (documentIds: number[], projectId: number | null) =>
     post<{ moved: number }>('/api/documents/move', { document_ids: documentIds, project_id: projectId }),
   patchDocument: (id: number, body: { title?: string; doc_type?: string; project_id?: number; clear_project?: boolean }) =>

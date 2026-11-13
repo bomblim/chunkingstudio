@@ -313,7 +313,10 @@ export interface VectorIndex {
   progress: { phase?: string; done?: number; total?: number }
   chunk_count: number
   warnings: string[]
-  stats: { last_run_id?: number; inserted?: number; embed_ms?: number; insert_ms?: number; embed_tokens?: number | null }
+  stats: {
+    last_run_id?: number; inserted?: number; embed_ms?: number; insert_ms?: number; embed_tokens?: number | null
+    batch?: { total: number; done: number; succeeded: number; failed: { document_id: number; title: string; error: string }[]; current: string | null }
+  }
   error: string
   created_at: string
 }
@@ -404,4 +407,11 @@ export interface ProjectTree {
   projects: Project[]
   unassigned_count: number
   total_count: number
+}
+
+/** 프로젝트 일괄 적재 계획: 문서마다 가장 최근에 성공한 청킹 실행 */
+export interface IndexPlan {
+  items: { document_id: number; title: string; run_id: number; method: string; chunk_count: number | null; created_at: string; project_path: string[]; note: string }[]
+  skipped: { document_id: number; title: string; reason: string }[]
+  default_collection: string
 }

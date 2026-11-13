@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { api, papi } from '../api'
+import { api, papi, vapi } from '../api'
 import { ProjectSettingsModal } from '../components/ProjectSettings'
 import { ProjectTreeView, projectOptions, type ProjectSelection } from '../components/ProjectTree'
 import { Badge, ErrorBanner, Modal, StatusBadge, fmtDate, useAsync, usePolling } from '../components/ui'
-import type { ParseJob, Project } from '../types'
+import type { ParseJob, Project, VectorIndex } from '../types'
 
 function parseSelection(v: string | null): ProjectSelection {
   if (v === 'unassigned') return 'unassigned'
@@ -26,6 +26,7 @@ export default function DocumentsPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editing, setEditing] = useState<{ project?: Project; parentId?: number | null } | null>(null)
+  const [indexing, setIndexing] = useState<Project | null>(null)
   const [checked, setChecked] = useState<number[]>([])
   const [moveTarget, setMoveTarget] = useState<string>('')
   const [notice, setNotice] = useState('')
@@ -111,6 +112,7 @@ export default function DocumentsPage() {
                 <button onClick={() => setEditing({ parentId: current.id })}>하위 추가</button>
                 <button className="danger" onClick={() => void deleteProject()}>삭제</button>
                 <button className="primary" disabled={!current.total_doc_count || !eff.method && !(eff.prompt_id && eff.model_id)} onClick={() => void runAll()}>일괄 청킹</button>
+                <button className="primary" disabled={!current.total_doc_count} onClick={() => setIndexing(current)} title="문서마다 가장 최근에 성공한 청킹 결과를 벡터 DB에 적재">일괄 적재</button>
               </div>
               <div className="row small" style={{ marginTop: 8, gap: 12 }}>
                 <span>청킹 프로파일:</span>
@@ -211,6 +213,7 @@ export default function DocumentsPage() {
 
       {showUpload && <UploadModal projects={projects} defaultProjectId={currentProjectId} onClose={() => setShowUpload(false)} onDone={reloadAll} />}
       {showImport && <ImportModal projects={projects} defaultProjectId={currentProjectId} onClose={() => setShowImport(false)} onDone={reloadAll} />}
+      {indexing && <IndexAllModal project={indexing} onClose={() => setIndexing(null)} />}
       {editing && (
         <ProjectSettingsModal project={editing.project} parentId={editing.parentId} projects={projects} onClose={() => setEditing(null)}
           onSaved={(p) => { setEditing(null); setSelection(p.id); reloadAll() }} />
@@ -377,6 +380,150 @@ function ImportModal({ projects, defaultProjectId, onClose, onDone }: { projects
           </table>
         </details>
       )}
+    </Modal>
+  )
+}
+
+/** 프로젝트 문서마다 가장 최근에 성공한 청킹 결과를 한 컬렉션에 일괄 적재 */
+function IndexAllModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const [includeDesc, setIncludeDesc] = useState(true)
+  const plan = useAsync(() => papi.indexPlan(project.id, includeDesc), [project.id, includeDesc])
+  const meta = useAsync(() => vapi.indexMeta(), [])
+  const models = useAsync(() => vapi.embeddingModels(true), [])
+  const stores = useAsync(() => vapi.vectorStores(), [])
+  const [modelId, setModelId] = useState<number>()
+  const [storeId, setStoreId] = useState<number>()
+  const [collection, setCollection] = useState('')
+  const [template, setTemplate] = useState('{text}')
+  const [metric, setMetric] = useState('COSINE')
+  const [mode, setMode] = useState('recreate')
+  const [error, setError] = useState('')
+  const [started, setStarted] = useState<VectorIndex | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => { if (!modelId && models.data?.length) setModelId(models.data[0].id) }, [models.data, modelId])
+  useEffect(() => {
+    if (!storeId && stores.data?.length) setStoreId((stores.data.find((s) => s.kind === 'milvus' && s.enabled) ?? stores.data[0]).id)
+  }, [stores.data, storeId])
+  useEffect(() => { if (!collection && plan.data) setCollection(plan.data.default_collection) }, [plan.data, collection])
+
+  const live = !!started && (started.status === 'queued' || started.status === 'running')
+  usePolling(async () => { if (started) setStarted(await vapi.index(started.id)) }, live, 1000)
+
+  const items = plan.data?.items ?? []
+  const skipped = plan.data?.skipped ?? []
+  const model = models.data?.find((m) => m.id === modelId)
+  const totalChunks = items.reduce((n, i) => n + (i.chunk_count ?? 0), 0)
+
+  const submit = async () => {
+    if (!modelId || !storeId) return
+    if (mode === 'recreate' && !confirm(`'${collection}' 컬렉션이 있으면 삭제하고 다시 만듭니다. 진행할까요?`)) return
+    setError('')
+    setBusy(true)
+    try {
+      const r = await papi.indexAll(project.id, { store_id: storeId, embedding_model_id: modelId, collection, embed_template: template, metric, mode, include_descendants: includeDesc })
+      setStarted(r.index)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const title = `일괄 적재 — ${project.path.join(' / ')}`
+
+  if (started) {
+    const b = started.stats.batch
+    return (
+      <Modal wide title={title} onClose={onClose} footer={<><Link to="/indexes"><button>벡터 인덱스·질의로 이동</button></Link><button className="primary" onClick={onClose}>닫기</button></>}>
+        <div className="row" style={{ gap: 10 }}>
+          <StatusBadge status={started.status} />
+          <b className="mono">{started.collection}</b>
+          {b && <span>문서 {Math.min(b.done + (live ? 1 : 0), b.total)}/{b.total} · 성공 {b.succeeded}{b.failed.length ? ` · 실패 ${b.failed.length}` : ''}</span>}
+          <span className="muted">컬렉션 청크 {started.chunk_count}개</span>
+        </div>
+        {live && b?.current && (
+          <div className="small muted" style={{ marginTop: 6 }}>
+            처리 중: {b.current} ({started.progress.phase === 'inserting' ? '적재' : '임베딩'} {started.progress.done ?? 0}/{started.progress.total ?? 0})
+          </div>
+        )}
+        {started.status === 'failed' && <div className="banner error" style={{ marginTop: 8 }}>{started.error}</div>}
+        {started.warnings.map((w, i) => <div key={i} className="small" style={{ color: 'var(--warn)', marginTop: 4 }}>⚠ {w}</div>)}
+        {!!b?.failed.length && (
+          <table className="list" style={{ marginTop: 8 }}>
+            <thead><tr><th>실패한 문서</th><th>오류</th></tr></thead>
+            <tbody>{b.failed.map((f) => <tr key={f.document_id}><td>{f.title}</td><td className="small">{f.error}</td></tr>)}</tbody>
+          </table>
+        )}
+        {started.status === 'done' && <div className="banner info" style={{ marginTop: 8 }}>적재가 끝났습니다. "벡터 인덱스·질의"에서 이 컬렉션으로 질의를 테스트할 수 있습니다.</div>}
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal wide title={title} onClose={onClose} footer={<><button onClick={onClose}>취소</button>
+      <button className="primary" disabled={busy || !items.length || !modelId || !storeId || !collection} onClick={() => void submit()}>{busy ? '시작 중…' : `문서 ${items.length}개 적재`}</button></>}>
+      <ErrorBanner error={error || plan.error} />
+      <p className="small muted" style={{ marginTop: 0 }}>
+        문서마다 <b>가장 최근에 성공한 청킹 실행</b>을 골라 한 컬렉션에 순서대로 적재합니다. 같은 문서의 이전 청크는 교체되어 중복되지 않습니다.
+        성공한 청킹이 없는 문서는 제외됩니다.
+      </p>
+      <label className="check small"><input type="checkbox" checked={includeDesc} onChange={(e) => setIncludeDesc(e.target.checked)} />하위 프로젝트 문서 포함</label>
+      <div className="scroll" style={{ maxHeight: 240, margin: '8px 0', border: '1px solid var(--border)', borderRadius: 6 }}>
+        <table className="list">
+          <thead><tr><th>문서</th><th>프로젝트</th><th>적재할 청킹 실행</th><th>청크</th></tr></thead>
+          <tbody>
+            {items.map((i) => (
+              <tr key={i.document_id}>
+                <td>{i.title}</td>
+                <td className="small">{i.project_path.join(' / ')}</td>
+                <td className="small">
+                  <Link to={`/playground?doc=${i.document_id}&run=${i.run_id}`} target="_blank">#{i.run_id}</Link> · {i.method === 'llm' ? 'LLM' : '규칙'} · {fmtDate(i.created_at)}
+                  {i.note && <div style={{ color: 'var(--warn)' }}>{i.note}</div>}
+                </td>
+                <td>{i.chunk_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {plan.data && !items.length && <div className="empty">성공한 청킹 실행이 있는 문서가 없습니다. 먼저 "일괄 청킹"을 실행하세요.</div>}
+      </div>
+      <div className="small">적재 대상 <b>{items.length}</b>개 문서 · 청크 약 <b>{totalChunks}</b>개{skipped.length > 0 && <> · 제외 {skipped.length}개</>}</div>
+      {skipped.length > 0 && (
+        <details style={{ marginTop: 4 }}>
+          <summary className="small muted">제외된 문서 {skipped.length}개</summary>
+          <ul className="small" style={{ margin: '4px 0' }}>{skipped.map((s) => <li key={s.document_id}>{s.title} — <span className="muted">{s.reason}</span></li>)}</ul>
+        </details>
+      )}
+      <div className="grid-3" style={{ marginTop: 10 }}>
+        <label className="field">임베딩 모델
+          <select value={modelId ?? ''} onChange={(e) => setModelId(Number(e.target.value))}>
+            {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}{m.dimension ? ` (${m.dimension}d)` : ''}</option>)}
+          </select>
+        </label>
+        <label className="field">벡터 저장소
+          <select value={storeId ?? ''} onChange={(e) => setStoreId(Number(e.target.value))}>
+            {stores.data?.filter((s) => s.enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        <label className="field">컬렉션 이름<input className="mono" value={collection} onChange={(e) => setCollection(e.target.value)} /></label>
+        <label className="field">유사도
+          <select value={metric} onChange={(e) => setMetric(e.target.value)}>{meta.data?.metrics.map((m) => <option key={m}>{m}</option>)}</select>
+        </label>
+        <label className="field">컬렉션이 이미 있으면
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="recreate">삭제 후 다시 만들기</option>
+            <option value="append">추가 (같은 문서는 교체)</option>
+            <option value="create">실패 (새로 만들 때만)</option>
+          </select>
+        </label>
+        <label className="field">임베딩 텍스트
+          <select value={template} onChange={(e) => setTemplate(e.target.value)}>
+            {meta.data?.templates.map((t) => <option key={t.label} value={t.template}>{t.label}</option>)}
+          </select>
+        </label>
+      </div>
+      {model && <div className="small muted" style={{ marginTop: 4 }}>최대 입력 {model.max_input_tokens} 토큰을 넘는 청크는 잘리거나 실패할 수 있습니다.</div>}
     </Modal>
   )
 }

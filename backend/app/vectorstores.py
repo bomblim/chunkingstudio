@@ -46,6 +46,7 @@ class Store(Protocol):
     def describe(self, name: str) -> dict[str, Any]: ...
     def insert(self, name: str, rows: list[dict[str, Any]]) -> int: ...
     def delete_by_run(self, name: str, run_id: int) -> None: ...
+    def delete_by_document(self, name: str, document_id: int) -> None: ...
     def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
                principals: list[str] | None = None) -> list[SearchHit]: ...
     def count(self, name: str) -> int: ...
@@ -242,6 +243,9 @@ class MilvusStore:
     def delete_by_run(self, name: str, run_id: int) -> None:
         self._call(self.client.delete, collection_name=name, filter=f"run_id == {int(run_id)}")
 
+    def delete_by_document(self, name: str, document_id: int) -> None:
+        self._call(self.client.delete, collection_name=name, filter=f"document_id == {int(document_id)}")
+
     def search(self, name: str, vector: list[float], top_k: int, filter: str = "",
                principals: list[str] | None = None) -> list[SearchHit]:
         self._call(self.client.load_collection, name)
@@ -311,6 +315,11 @@ class MemoryStore:
     def delete_by_run(self, name: str, run_id: int) -> None:
         d = self._load(name)
         d["rows"] = {k: v for k, v in d["rows"].items() if v.get("run_id") != run_id}
+        self._save(name, d)
+
+    def delete_by_document(self, name: str, document_id: int) -> None:
+        d = self._load(name)
+        d["rows"] = {k: v for k, v in d["rows"].items() if v.get("document_id") != document_id}
         self._save(name, d)
 
     def search(self, name: str, vector: list[float], top_k: int, filter: str = "",

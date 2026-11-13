@@ -207,33 +207,45 @@ def get_index(index_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _index_out(db, get_or_404(db, VectorIndex, index_id))
 
 
-@router.post("/indexes", status_code=202)
-def create_index(body: IndexIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
-    _check_run(db, body.run_id)
-    store = get_or_404(db, VectorStore, body.store_id)
-    model = get_or_404(db, EmbeddingModel, body.embedding_model_id)
+def prepare_index(db: Session, *, store_id: int, embedding_model_id: int, collection: str, name: str,
+                  embed_template: str, metric: str, mode: str) -> VectorIndex:
+    """적재 대상 인덱스를 검증하고 준비한다(append면 같은 저장소·컬렉션의 기존 인덱스를 재사용). commit은 호출자가."""
+    store = get_or_404(db, VectorStore, store_id)
+    model = get_or_404(db, EmbeddingModel, embedding_model_id)
     if not store.enabled or not model.enabled:
         raise HTTPException(400, "비활성화된 저장소 또는 임베딩 모델입니다")
-    if body.metric not in {"COSINE", "IP", "L2"}:
+    if metric not in {"COSINE", "IP", "L2"}:
         raise HTTPException(400, "metric은 COSINE / IP / L2 중 하나")
-    if body.mode not in {"create", "recreate", "append"}:
+    if mode not in {"create", "recreate", "append"}:
         raise HTTPException(400, "mode는 create / recreate / append 중 하나")
     try:
-        validate_collection_name(body.collection)
+        validate_collection_name(collection)
     except VectorStoreError as exc:
         raise HTTPException(400, str(exc)) from exc
     ix = None
-    if body.mode == "append":  # 같은 저장소·컬렉션의 기존 인덱스에 추가
+    if mode == "append":  # 같은 저장소·컬렉션의 기존 인덱스에 추가
         ix = db.scalar(select(VectorIndex).where(VectorIndex.store_id == store.id,
-                                                 VectorIndex.collection == body.collection)
+                                                 VectorIndex.collection == collection)
                        .order_by(VectorIndex.id.desc()))
         if ix and ix.embedding_model_id != model.id:
             raise HTTPException(400, "기존 컬렉션과 다른 임베딩 모델로는 추가할 수 없습니다")
+        if ix and ix.status in ("queued", "running"):
+            raise HTTPException(409, "이 컬렉션에 적재가 진행 중입니다. 끝난 뒤 다시 시도하세요")
     if ix is None:
-        ix = VectorIndex(name=body.name or body.collection, store_id=store.id, collection=body.collection,
-                         embedding_model_id=model.id, embed_template=body.embed_template, metric=body.metric)
+        ix = VectorIndex(name=name or collection, store_id=store.id, collection=collection,
+                         embedding_model_id=model.id, embed_template=embed_template, metric=metric)
         db.add(ix)
     ix.status = "queued"
+    ix.error = ""
+    return ix
+
+
+@router.post("/indexes", status_code=202)
+def create_index(body: IndexIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
+    _check_run(db, body.run_id)
+    ix = prepare_index(db, store_id=body.store_id, embedding_model_id=body.embedding_model_id,
+                       collection=body.collection, name=body.name, embed_template=body.embed_template,
+                       metric=body.metric, mode=body.mode)
     db.commit()
     background.add_task(execute_index_job, ix.id, body.run_id, body.mode)
     return _index_out(db, ix)

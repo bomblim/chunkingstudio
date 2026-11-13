@@ -5,6 +5,8 @@ import time
 import traceback
 from typing import Any
 
+from sqlalchemy import select
+
 from .db import SessionLocal
 from .embeddings import EmbeddingError, embed, render_embed_text
 from .models import ChunkRun, Document, EmbeddingModel, VectorIndex, VectorStore
@@ -70,8 +72,14 @@ def build_rows(
     return rows, inputs, warnings
 
 
-def execute_index_job(index_id: int, run_id: int, mode: str) -> None:
-    """mode: create(없으면 생성) | recreate(삭제 후 생성) | append(기존 컬렉션에 추가, 같은 실행은 교체)."""
+def execute_index_job(index_id: int, run_id: int, mode: str, *, replace_document: bool = False,
+                      finalize: bool = True) -> str | None:
+    """mode: create(없으면 생성) | recreate(삭제 후 생성) | append(기존 컬렉션에 추가, 같은 실행은 교체).
+
+    replace_document: 같은 문서의 이전 실행 청크도 지우고 넣는다(일괄 적재에서 재청킹한 문서가 중복되지 않도록).
+    finalize: False면 성공해도 상태를 running으로 둔다(일괄 적재 중간 단계).
+    반환: 실패 시 오류 메시지, 성공 시 None.
+    """
     db = SessionLocal()
     try:
         index = db.get(VectorIndex, index_id)
@@ -121,29 +129,93 @@ def execute_index_job(index_id: int, run_id: int, mode: str) -> None:
             if mode == "create" and not index.run_ids:
                 raise VectorStoreError("같은 이름의 컬렉션이 이미 있습니다. '추가' 또는 '재생성'을 선택하세요")
             store.delete_by_run(index.collection, run.id)  # 같은 실행 재적재 시 중복 방지
+            if replace_document:
+                store.delete_by_document(index.collection, document.id)
         else:
             store.create_collection(index.collection, dim, index.metric)
         inserted = store.insert(index.collection, rows)
         insert_ms = int((time.monotonic() - started) * 1000)
 
         index.dimension = dim
-        index.run_ids = sorted({*(index.run_ids or []), run.id})
+        run_ids = set(index.run_ids or [])
+        if replace_document:  # 같은 문서의 이전 실행은 컬렉션에서 지웠으므로 목록에서도 뺀다
+            run_ids -= set(db.scalars(select(ChunkRun.id).where(ChunkRun.document_id == document.id)))
+        index.run_ids = sorted({*run_ids, run.id})
         index.chunk_count = store.count(index.collection)
         index.warnings = warnings
+        batch = (index.stats or {}).get("batch")
         index.stats = {
             "last_run_id": run.id, "inserted": inserted, "embed_ms": result.latency_ms, "insert_ms": insert_ms,
-            "embed_tokens": result.prompt_tokens,
+            "embed_tokens": result.prompt_tokens, **({"batch": batch} if batch else {}),
         }
         index.progress = {"phase": "done", "done": len(rows), "total": len(rows)}
-        index.status = "done"
+        index.status = "done" if finalize else "running"
         db.commit()
+        return None
     except Exception as exc:
         db.rollback()
         index = db.get(VectorIndex, index_id)
+        known = isinstance(exc, (EmbeddingError, VectorStoreError, ValueError))
+        message = str(exc) if known else f"{exc}\n{traceback.format_exc()[-1500:]}"
         if index:
+            index.status = "failed" if finalize else "running"
+            index.error = message
+            db.commit()
+        return message
+    finally:
+        db.close()
+
+
+def execute_index_batch(index_id: int, items: list[dict[str, Any]], mode: str) -> None:
+    """여러 문서의 청킹 실행을 한 컬렉션에 순차 적재한다.
+
+    items: [{"run_id", "document_id", "title"}]. 첫 건은 mode(create/recreate/append)로, 이후는 append로 넣고
+    문서 단위로 이전 청크를 교체한다. 첫 건이 실패하면(컬렉션 문제일 가능성이 커서) 나머지는 건너뛴다.
+    """
+    total = len(items)
+    failed: list[dict[str, Any]] = []
+    succeeded = 0
+    for i, item in enumerate(items):
+        _set_batch(index_id, {"total": total, "done": i, "succeeded": succeeded, "failed": failed,
+                              "current": item.get("title")})
+        err = execute_index_job(index_id, item["run_id"], mode if i == 0 else "append",
+                                replace_document=True, finalize=False)
+        if err:
+            failed.append({**item, "error": err[:500]})
+            if i == 0:
+                failed.extend({**x, "error": "첫 문서 적재 실패로 건너뜀"} for x in items[1:])
+                break
+        else:
+            succeeded += 1
+    db = SessionLocal()
+    try:
+        index = db.get(VectorIndex, index_id)
+        if index is None:
+            return
+        index.stats = {**(index.stats or {}), "batch": {"total": total, "done": total, "succeeded": succeeded,
+                                                         "failed": failed, "current": None}}
+        if succeeded:
+            index.status = "done"
+            index.error = ""
+            if failed:
+                names = ", ".join(f"{f.get('title')}({f['error'][:80]})" for f in failed[:5])
+                index.warnings = [*(index.warnings or []),
+                                  f"{len(failed)}개 문서 적재 실패: {names}{' …' if len(failed) > 5 else ''}"]
+        else:
             index.status = "failed"
-            known = isinstance(exc, (EmbeddingError, VectorStoreError, ValueError))
-            index.error = str(exc) if known else f"{exc}\n{traceback.format_exc()[-1500:]}"
+            index.error = failed[0]["error"] if failed else "적재할 문서가 없습니다"
+        db.commit()
+    finally:
+        db.close()
+
+
+def _set_batch(index_id: int, batch: dict[str, Any]) -> None:
+    db = SessionLocal()
+    try:
+        index = db.get(VectorIndex, index_id)
+        if index is not None:
+            index.stats = {**(index.stats or {}), "batch": batch}
+            index.status = "running"
             db.commit()
     finally:
         db.close()

@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..indexing import execute_index_batch
 from ..models import ChunkRun, Document, LLMModel, Project, Prompt
 from ..projects import (
     descendant_ids, effective_access, effective_profile, load_tree, path_names, resolve_prompt_version,
@@ -17,6 +18,7 @@ from ..projects import (
 from ..services import execute_run
 from . import get_or_404, row_dict
 from .runs import create_run
+from .vectors import _index_out, prepare_index
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -184,3 +186,68 @@ def _execute_sequential(run_ids: list[int]) -> None:
         execute_run(rid)
 
 
+
+
+# ------------------------------------------------------------------ 일괄 적재 (벡터 DB)
+class IndexAllIn(BaseModel):
+    store_id: int
+    embedding_model_id: int
+    collection: str
+    name: str = ""
+    embed_template: str = "{text}"
+    metric: str = "COSINE"
+    mode: str = "recreate"  # create | recreate | append
+    include_descendants: bool = True
+
+
+def _index_plan(db: Session, project: Project, include_descendants: bool) -> dict[str, Any]:
+    """프로젝트 문서마다 '가장 최근에 성공한(완료·청크 있음) 청킹 실행'을 고른다."""
+    tree = load_tree(db)
+    ids = descendant_ids(tree, project.id) if include_descendants else {project.id}
+    docs = list(db.scalars(select(Document).where(Document.project_id.in_(ids)).order_by(Document.id)))
+    rows = db.execute(
+        select(ChunkRun.id, ChunkRun.document_id, ChunkRun.status, ChunkRun.method, ChunkRun.totals, ChunkRun.created_at)
+        .where(ChunkRun.document_id.in_([d.id for d in docs])).order_by(ChunkRun.id)
+    ).all() if docs else []
+    latest_ok: dict[int, Any] = {}
+    latest_any: dict[int, Any] = {}
+    for r in rows:
+        latest_any[r.document_id] = r
+        if r.status == "done" and (r.totals or {}).get("chunk_count"):
+            latest_ok[r.document_id] = r
+    items, skipped = [], []
+    for d in docs:
+        ok, last = latest_ok.get(d.id), latest_any.get(d.id)
+        if ok is None:
+            reason = "청킹 실행 없음" if last is None else f"성공한 청킹 없음 (최근 #{last.id} {last.status})"
+            skipped.append({"document_id": d.id, "title": d.title, "reason": reason})
+            continue
+        note = f"더 최근 실행 #{last.id}은(는) {last.status}" if last is not None and last.id != ok.id else ""
+        items.append({"document_id": d.id, "title": d.title, "run_id": ok.id, "method": ok.method,
+                      "chunk_count": (ok.totals or {}).get("chunk_count"), "created_at": ok.created_at,
+                      "project_path": path_names(tree, d.project_id), "note": note})
+    return {"items": items, "skipped": skipped, "default_collection": f"cs_proj{project.id}"}
+
+
+@router.get("/{project_id}/index-plan")
+def index_plan(project_id: int, include_descendants: bool = True, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return _index_plan(db, get_or_404(db, Project, project_id), include_descendants)
+
+
+@router.post("/{project_id}/index-all", status_code=202)
+def index_all(project_id: int, body: IndexAllIn, background: BackgroundTasks,
+              db: Session = Depends(get_db)) -> dict[str, Any]:
+    """프로젝트 문서의 최근 성공 청킹 결과를 한 컬렉션에 일괄 적재한다(순차, 문서 단위 교체)."""
+    p = get_or_404(db, Project, project_id)
+    plan = _index_plan(db, p, body.include_descendants)
+    if not plan["items"]:
+        raise HTTPException(400, "적재할 문서가 없습니다 (성공한 청킹 실행이 있는 문서가 없음)")
+    ix = prepare_index(db, store_id=body.store_id, embedding_model_id=body.embedding_model_id,
+                       collection=body.collection, name=body.name or f"{' / '.join(path_names(load_tree(db), p.id))}",
+                       embed_template=body.embed_template, metric=body.metric, mode=body.mode)
+    total = len(plan["items"])
+    ix.stats = {**(ix.stats or {}), "batch": {"total": total, "done": 0, "succeeded": 0, "failed": [], "current": None}}
+    db.commit()
+    items = [{"run_id": i["run_id"], "document_id": i["document_id"], "title": i["title"]} for i in plan["items"]]
+    background.add_task(execute_index_batch, ix.id, items, body.mode)
+    return {"index": _index_out(db, ix), "document_count": total, "skipped": plan["skipped"]}
