@@ -205,13 +205,21 @@ function QueryPanel({ index }: { index: VectorIndex }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<string[]>([])
+  const rerankers = useAsync(() => vapi.rerankModels(true), [])
+  const [rerankId, setRerankId] = useState<number | ''>('')
+  const [candidates, setCandidates] = useState<number | ''>('')
+  const defaultCandidates = Math.min(200, Math.max(20, topK * 4))
 
   const run = async (q = query) => {
     if (!q.trim()) return
     setLoading(true)
     setError('')
     try {
-      setResult(await vapi.query(index.id, { query: q, top_k: topK, filter, principals: useAcl ? principalList : null }))
+      setResult(await vapi.query(index.id, {
+        query: q, top_k: topK, filter, principals: useAcl ? principalList : null,
+        rerank_model_id: rerankId === '' ? null : rerankId,
+        rerank_candidates: rerankId === '' || candidates === '' ? null : candidates,
+      }))
       setHistory((h) => [q, ...h.filter((x) => x !== q)].slice(0, 8))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -219,7 +227,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
       setLoading(false)
     }
   }
-  const maxScore = Math.max(...(result?.hits.map((h) => Math.abs(h.score)) ?? [1]), 1e-9)
+  const maxScore = Math.max(...(result?.hits.map((h) => Math.abs(h.rerank_score ?? h.score)) ?? [1]), 1e-9)
 
   return (
     <div className="card" style={{ marginTop: 12 }}>
@@ -236,6 +244,19 @@ function QueryPanel({ index }: { index: VectorIndex }) {
           placeholder="사용자의 권한 주체 — 예: user:hong, group:인사팀 (비우면 공개 청크만)" aria-label="사용자 권한 주체" />
       </div>
       {useAcl && <div className="small muted">공개(권한 목록 없음) 청크와, 권한 목록에 위 주체가 하나라도 있는 청크만 검색합니다. 이 기능 이전에 적재한 청크는 권한 정보가 없어 제외되니 다시 적재하세요.</div>}
+      <div className="row small" style={{ marginTop: 6, flexWrap: 'nowrap' }}>
+        <span style={{ whiteSpace: 'nowrap' }}>리랭크</span>
+        <select aria-label="리랭크 모델" value={rerankId} onChange={(e) => setRerankId(e.target.value ? Number(e.target.value) : '')}>
+          <option value="">사용 안 함 (벡터 점수 순)</option>
+          {rerankers.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <label className="row" style={{ whiteSpace: 'nowrap' }}>후보 수
+          <input type="number" min={1} max={200} disabled={rerankId === ''} value={candidates} placeholder={String(defaultCandidates)}
+            onChange={(e) => setCandidates(e.target.value ? Number(e.target.value) : '')} style={{ width: 72 }} aria-label="리랭크 후보 수" />
+        </label>
+        {rerankId !== '' && <span className="muted">벡터 검색으로 후보 {candidates === '' ? defaultCandidates : candidates}개를 가져와 리랭크한 뒤 상위 {topK}개를 보여 줍니다</span>}
+        {rerankers.data?.length === 0 && <span className="muted">사용 가능한 리랭크 모델이 없습니다 — <Link to="/rerank-models">리랭크 모델</Link>에서 등록·활성화하세요</span>}
+      </div>
       {index.store_kind === 'milvus' && (
         <input style={{ marginTop: 6, width: '100%' }} className="mono" value={filter} onChange={(e) => setFilter(e.target.value)}
           placeholder='Milvus 필터 (선택) — 예: run_id == 3  /  document_id in [1, 2]  /  metadata["doc_type"] == "사내 규정"' aria-label="필터" />
@@ -246,14 +267,30 @@ function QueryPanel({ index }: { index: VectorIndex }) {
         <div className="col" style={{ marginTop: 10 }}>
           {result.applied_filter && <div className="small muted mono">적용 필터: {result.applied_filter}</div>}
           {result.principals && !result.applied_filter && <div className="small muted">권한 필터: {result.principals.length ? result.principals.join(', ') : '공개 청크만'}</div>}
-          <div className="small muted">결과 {result.hits.length}건 · 질의 임베딩 {result.embed_ms}ms · 검색 {result.search_ms}ms · {result.metric}{result.metric === 'L2' ? ' (작을수록 유사)' : ' (클수록 유사)'}</div>
+          <div className="small muted">
+            결과 {result.hits.length}건 · 질의 임베딩 {result.embed_ms}ms · 검색 {result.search_ms}ms · {result.metric}{result.metric === 'L2' ? ' (작을수록 유사)' : ' (클수록 유사)'}
+            {result.rerank && <> · 리랭크 <b>{result.rerank.model_name}</b> 후보 {result.rerank.candidates}개 {result.rerank.latency_ms}ms</>}
+          </div>
           {result.warnings.map((w, i) => <div key={i} className="banner warn small" style={{ margin: 0 }}>{w}</div>)}
           {result.hits.map((h, i) => (
             <div key={h.id} className="card" style={{ padding: 10, margin: 0 }}>
               <div className="row" style={{ gap: 8 }}>
                 <b>#{i + 1}</b>
-                <span className="mono" style={{ minWidth: 64 }}>{h.score.toFixed(4)}</span>
-                <div style={{ width: 80, height: 6, background: 'var(--surface-2)', borderRadius: 3 }}><div style={{ width: `${(Math.abs(h.score) / maxScore) * 100}%`, height: 6, background: 'var(--accent)', borderRadius: 3 }} /></div>
+                {h.rerank_score !== undefined ? (
+                  <>
+                    <span className="mono" style={{ minWidth: 64 }} title="리랭크 점수">{h.rerank_score.toFixed(4)}</span>
+                    <div style={{ width: 80, height: 6, background: 'var(--surface-2)', borderRadius: 3 }}><div style={{ width: `${(Math.abs(h.rerank_score) / maxScore) * 100}%`, height: 6, background: 'var(--accent)', borderRadius: 3 }} /></div>
+                    <span className="small muted mono" title="벡터 유사도 점수와 리랭크 전 순위">
+                      벡터 {h.score.toFixed(4)} · #{h.vector_rank}
+                      {h.vector_rank !== i + 1 && <span style={{ color: h.vector_rank > i + 1 ? 'var(--ok)' : 'var(--warn)' }}> {h.vector_rank > i + 1 ? '▲' : '▼'}{Math.abs(h.vector_rank - (i + 1))}</span>}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="mono" style={{ minWidth: 64 }}>{h.score.toFixed(4)}</span>
+                    <div style={{ width: 80, height: 6, background: 'var(--surface-2)', borderRadius: 3 }}><div style={{ width: `${(Math.abs(h.score) / maxScore) * 100}%`, height: 6, background: 'var(--accent)', borderRadius: 3 }} /></div>
+                  </>
+                )}
                 <b className="grow">{h.title || h.section_path || h.chunk_id}</b>
                 <Badge>{h.chunk_id}</Badge>
                 {h.metadata.tokens ? <Badge>{h.metadata.tokens}t</Badge> : null}

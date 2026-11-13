@@ -283,6 +283,25 @@ export interface EmbeddingModel {
   last_health: { ok?: boolean; message?: string; dimension?: number; latency_ms?: number; checked_at?: string }
 }
 
+/** 벡터 검색 후보를 다시 점수 매기는 리랭크 모델 */
+export interface RerankModel {
+  id: number
+  name: string
+  provider: 'tei' | 'cohere_compatible' | 'mock'
+  engine: string
+  base_url: string
+  model_id: string
+  api_key_env: string
+  is_external: boolean
+  max_input_tokens: number
+  batch_size: number
+  document_template: string
+  extra_params: Record<string, unknown>
+  enabled: boolean
+  blocked: boolean
+  last_health: { ok?: boolean; message?: string; latency_ms?: number; scores?: number[]; sane?: boolean; checked_at?: string }
+}
+
 export interface VectorStore {
   id: number
   name: string
@@ -349,7 +368,12 @@ export interface VectorIndex {
 
 export interface SearchHit {
   id: string
+  /** 벡터 유사도 점수 */
   score: number
+  /** 리랭크 전 벡터 검색 순위(1부터) */
+  vector_rank: number
+  /** 리랭크 점수 (리랭크를 쓴 질의만) */
+  rerank_score?: number
   chunk_id: string
   run_id: number
   document_id: number
@@ -372,6 +396,7 @@ export interface QueryResult {
   warnings: string[]
   principals: string[] | null
   applied_filter: string | null
+  rerank: { model_id: number; model_name: string; candidates: number; latency_ms: number } | null
   hits: SearchHit[]
 }
 

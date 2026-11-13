@@ -86,6 +86,11 @@ docker compose -f deploy/milvus/docker-compose.yml up -d
 
 2. **Playground**에서 청킹을 실행한 뒤 "벡터 DB 적재 →"를 누르거나, **벡터 인덱스·질의**에서 "청크 적재"를 누릅니다. 적재 위치는 문서의 프로젝트에 지정된 컬렉션으로 정해집니다(미분류는 기본 컬렉션).
 3. 적재가 끝나면 같은 화면의 **질의 테스트**에서 검색 결과(점수·청크 원문·위치)를 확인합니다. Milvus는 `run_id == 3` 같은 필터도 쓸 수 있습니다.
+4. (선택) **리랭크**: "리랭크 모델"에 cross-encoder를 등록하고 질의 테스트에서 고르면, 벡터 검색 후보(기본 Top-K×4, 최소 20)를 리랭크 점수로 다시 정렬해 상위 Top-K를 보여 줍니다. 결과에 리랭크 점수와 함께 벡터 점수·원래 순위(▲▼)가 표시됩니다. 지원 형식: TEI `/rerank`, Cohere 형식 `/rerank`(vLLM `--task score`, Infinity, Xinference, Jina, Cohere). 오프라인 확인용 Mock 리랭커가 기본 등록되어 있습니다.
+
+   ```bash
+   docker run --gpus all -p 8081:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id BAAI/bge-reranker-v2-m3
+   ```
 
 Milvus를 TLS로 접속하려면 저장소 URI를 `https://`로 등록합니다. 사설 CA면 "CA 인증서 경로", 인증서 이름과 접속 호스트가 다르면 "인증서 서버 이름"을 지정합니다. nginx로 TLS를 종료하는 구성은 [deploy/offline-milvus/README.md](deploy/offline-milvus/README.md) 4장을 참고하세요.
 

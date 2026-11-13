@@ -2,7 +2,7 @@ import type {
   IndexPlan,
   IndexTarget,
   ChunkSettings, DocumentDetail, DocumentSummary, EmbeddingModel, LLMModel, ParseJob, Parser, Prompt, PromptPreview,
-  Project, ProjectTree, PromptVersion, QueryResult, RunDetail, RunSummary, VectorCollection, VectorIndex, VectorStore,
+  Project, ProjectTree, PromptVersion, QueryResult, RerankModel, RunDetail, RunSummary, VectorCollection, VectorIndex, VectorStore,
 } from './types'
 
 export class ApiError extends Error {
@@ -107,6 +107,7 @@ export const api = {
 }
 
 export type EmbeddingModelInput = Omit<EmbeddingModel, 'id' | 'last_health' | 'blocked'>
+export type RerankModelInput = Omit<RerankModel, 'id' | 'last_health' | 'blocked'>
 export type VectorStoreInput = Omit<VectorStore, 'id' | 'last_health' | 'collections'>
 export type CollectionInput = { name: string; description: string; is_default: boolean }
 
@@ -118,6 +119,12 @@ export const vapi = {
   createEmbeddingModel: (m: EmbeddingModelInput) => post<EmbeddingModel>('/api/embedding-models', m),
   updateEmbeddingModel: (id: number, m: EmbeddingModelInput) => put<EmbeddingModel>(`/api/embedding-models/${id}`, m),
   embeddingHealth: (id: number) => post<EmbeddingModel['last_health']>(`/api/embedding-models/${id}/health`),
+  rerankModels: (usableOnly = false) => get<RerankModel[]>(`/api/rerank-models${qs({ usable_only: usableOnly })}`),
+  rerankMeta: () => get<{ providers: string[]; template_fields: string[] }>('/api/rerank-models/meta'),
+  createRerankModel: (m: RerankModelInput) => post<RerankModel>('/api/rerank-models', m),
+  updateRerankModel: (id: number, m: RerankModelInput) => put<RerankModel>(`/api/rerank-models/${id}`, m),
+  deleteRerankModel: (id: number) => del(`/api/rerank-models/${id}`),
+  rerankHealth: (id: number) => post<RerankModel['last_health']>(`/api/rerank-models/${id}/health`),
 
   vectorStores: () => get<VectorStore[]>('/api/vector-stores'),
   createVectorStore: (s: VectorStoreInput) => post<VectorStore>('/api/vector-stores', s),
@@ -136,7 +143,7 @@ export const vapi = {
     post<VectorIndex>('/api/indexes', body),
   appendRun: (id: number, runId: number) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
   deleteIndex: (id: number, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
-  query: (id: number, body: { query: string; top_k: number; filter: string; principals?: string[] | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
+  query: (id: number, body: { query: string; top_k: number; filter: string; principals?: string[] | null; rerank_model_id?: number | null; rerank_candidates?: number | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }
 
 export type ProjectInput = Pick<Project, 'name' | 'description' | 'parent_id' | 'sort_order' | 'method' | 'prompt_id' | 'prompt_version_id' | 'model_id' | 'params' | 'settings' | 'doc_type' | 'vector_collection_id' | 'meta' | 'permissions' | 'permission_mode'>

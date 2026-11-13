@@ -10,7 +10,8 @@ from .. import sample_parser
 from ..chunking import prompting
 from ..config import settings
 from ..models import (
-    Document, EmbeddingModel, LLMModel, Parser, Project, Prompt, PromptVersion, VectorCollection, VectorStore,
+    Document, EmbeddingModel, LLMModel, Parser, Project, Prompt, PromptVersion, RerankModel, VectorCollection,
+    VectorStore,
 )
 from ..services import save_document, sha256, store_file
 
@@ -71,6 +72,7 @@ def seed(db: Session) -> None:
                       file_hash=sha256(data), source_file_path=str(path), doc_type="사내 규정")
 
     seed_vectors(db)
+    seed_rerank(db)
     seed_upstage(db)
 
 
@@ -106,6 +108,26 @@ def seed_vectors(db: Session) -> None:
         ])
         db.commit()
     ensure_collections(db)
+
+
+def seed_rerank(db: Session) -> None:
+    """리랭크 모델: 오프라인 Mock(활성) + 자체 서빙·상용 예시(비활성, 주소만 맞추면 사용)."""
+    if db.scalar(select(RerankModel)):
+        return
+    db.add_all([
+        RerankModel(name="Mock 리랭커 (오프라인)", provider="mock", engine="mock", model_id="mock-overlap",
+                    max_input_tokens=8192),
+        RerankModel(name="bge-reranker-v2-m3 (TEI 예시)", provider="tei", engine="tei",
+                    base_url="http://localhost:8081", model_id="BAAI/bge-reranker-v2-m3", max_input_tokens=8192,
+                    enabled=False),
+        RerankModel(name="bge-reranker-v2-m3 (vLLM 예시)", provider="cohere_compatible", engine="vllm",
+                    base_url="http://localhost:8000/v1", model_id="BAAI/bge-reranker-v2-m3", max_input_tokens=8192,
+                    enabled=False),
+        RerankModel(name="Cohere rerank-v3.5 (예시)", provider="cohere_compatible", engine="cohere",
+                    base_url="https://api.cohere.com/v2", model_id="rerank-v3.5", api_key_env="COHERE_API_KEY",
+                    is_external=True, max_input_tokens=4096, enabled=False),
+    ])
+    db.commit()
 
 
 def ensure_collections(db: Session) -> None:

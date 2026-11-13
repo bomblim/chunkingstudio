@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import DocumentsPage from './pages/DocumentsPage'
 import DocumentViewerPage from './pages/DocumentViewerPage'
 import EmbeddingModelsPage from './pages/EmbeddingModelsPage'
+import RerankModelsPage from './pages/RerankModelsPage'
 import IndexesPage from './pages/IndexesPage'
 import ModelsPage from './pages/ModelsPage'
 import ParsersPage from './pages/ParsersPage'
@@ -28,6 +29,7 @@ export default function App() {
         {nav('/parsers', 'Parser Registry')}
         {nav('/models', '모델 레지스트리')}
         {nav('/embedding-models', '임베딩 모델')}
+        {nav('/rerank-models', '리랭크 모델')}
         {nav('/vector-stores', '벡터 저장소')}
       </nav>
       <main className="main">
@@ -41,6 +43,7 @@ export default function App() {
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/indexes" element={<IndexesPage />} />
           <Route path="/embedding-models" element={<EmbeddingModelsPage />} />
+          <Route path="/rerank-models" element={<RerankModelsPage />} />
           <Route path="/vector-stores" element={<VectorStoresPage />} />
           <Route path="*" element={<div className="empty">페이지를 찾을 수 없습니다</div>} />
         </Routes>

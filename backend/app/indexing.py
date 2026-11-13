@@ -9,8 +9,9 @@ from sqlalchemy import select
 
 from .db import SessionLocal
 from .embeddings import EmbeddingError, embed, render_embed_text
-from .models import ChunkRun, Document, EmbeddingModel, VectorIndex, VectorStore
+from .models import ChunkRun, Document, EmbeddingModel, RerankModel, VectorIndex, VectorStore
 from .projects import effective_access, load_tree, path_names
+from .reranking import render_rerank_text, rerank
 from .vectorstores import VectorStoreError, clip_utf8, combine_filters, open_store, permission_expr, timed
 
 
@@ -221,19 +222,45 @@ def _set_batch(index_id: int, batch: dict[str, Any]) -> None:
         db.close()
 
 
+def default_rerank_candidates(top_k: int) -> int:
+    return min(200, max(20, top_k * 4))
+
+
 def query_index(index: VectorIndex, model: EmbeddingModel, store_cfg: VectorStore, query: str, top_k: int,
-                filter: str = "", principals: list[str] | None = None) -> dict[str, Any]:
-    """principals: None이면 권한 필터 없음(관리자 보기), 목록이면 그 주체가 볼 수 있는 청크만."""
+                filter: str = "", principals: list[str] | None = None, reranker: RerankModel | None = None,
+                rerank_candidates: int | None = None) -> dict[str, Any]:
+    """principals: None이면 권한 필터 없음(관리자 보기), 목록이면 그 주체가 볼 수 있는 청크만.
+
+    reranker를 주면 벡터 검색으로 후보(rerank_candidates개, 기본 top_k×4·최소 20)를 가져와
+    리랭크 점수로 다시 정렬한 뒤 top_k만 돌려준다. 각 결과에 vector_rank(리랭크 전 순위)를 남긴다.
+    """
     q = embed(model, [query], "query")
     store = open_store(store_cfg)
-    hits, search_ms = timed(store.search, index.collection, q.vectors[0], top_k, filter, principals)
+    fetch = top_k
+    if reranker is not None:
+        fetch = max(top_k, min(200, rerank_candidates or default_rerank_candidates(top_k)))
+    hits, search_ms = timed(store.search, index.collection, q.vectors[0], fetch, filter, principals)
+    rows = [{"id": h.id, "score": h.score, "vector_rank": i + 1, **h.fields} for i, h in enumerate(hits)]
+    warnings = list(q.warnings)
+    rerank_info = None
+    if reranker is not None:
+        docs = [render_rerank_text(reranker.document_template, r) for r in rows]
+        rr = rerank(reranker, query, docs) if docs else None
+        if rr is not None:
+            for r, s in zip(rows, rr.scores, strict=True):
+                r["rerank_score"] = s
+            rows.sort(key=lambda r: r["rerank_score"], reverse=True)
+            warnings.extend(rr.warnings)
+        rerank_info = {"model_id": reranker.id, "model_name": reranker.name, "candidates": len(docs),
+                       "latency_ms": rr.latency_ms if rr else 0}
     return {
         "query": query,
         "embed_ms": q.latency_ms,
         "search_ms": search_ms,
         "metric": index.metric,
-        "warnings": q.warnings,
+        "warnings": warnings,
         "principals": principals,
         "applied_filter": combine_filters(filter, permission_expr(principals)) if store_cfg.kind == "milvus" else None,
-        "hits": [{"id": h.id, "score": h.score, **h.fields} for h in hits],
+        "rerank": rerank_info,
+        "hits": rows[:top_k],
     }

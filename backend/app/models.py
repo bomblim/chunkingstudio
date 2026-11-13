@@ -243,6 +243,29 @@ class EmbeddingModel(TimestampMixin, Base):
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class RerankModel(TimestampMixin, Base):
+    """벡터 검색 후보를 질의와 함께 다시 점수 매기는 리랭크(cross-encoder) 모델."""
+
+    __tablename__ = "rerank_models"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    # tei(/rerank) | cohere_compatible(/rerank, Cohere 형식: vLLM·Infinity·Jina·Cohere) | mock
+    provider: Mapped[str] = mapped_column(String(50))
+    engine: Mapped[str] = mapped_column(String(50), default="")
+    base_url: Mapped[str] = mapped_column(String(1000), default="")
+    model_id: Mapped[str] = mapped_column(String(300), default="")
+    api_key_env: Mapped[str] = mapped_column(String(200), default="")
+    is_external: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_input_tokens: Mapped[int] = mapped_column(Integer, default=512)  # 질의+문서 합
+    batch_size: Mapped[int] = mapped_column(Integer, default=32)  # 한 번에 보낼 후보 수
+    # 리랭크에 넣을 문서 텍스트: {text} {title} {section_path} {document_title}
+    document_template: Mapped[str] = mapped_column(Text, default="{text}")
+    extra_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
 class VectorStore(TimestampMixin, Base):
     __tablename__ = "vector_stores"
 

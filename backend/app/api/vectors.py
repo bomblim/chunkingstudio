@@ -12,9 +12,12 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..embeddings import TEMPLATE_FIELDS, EmbeddingError, embed
-from ..indexing import execute_index_job, query_index
-from ..models import ChunkRun, Document, EmbeddingModel, Project, VectorCollection, VectorIndex, VectorStore
+from ..indexing import default_rerank_candidates, execute_index_job, query_index
+from ..models import ChunkRun, Document, EmbeddingModel, Project, RerankModel, VectorCollection, VectorIndex, VectorStore
 from ..projects import default_collection, load_tree, resolve_collection, target_brief, validate_principal
+from ..reranking import PROVIDERS as RERANK_PROVIDERS
+from ..reranking import TEMPLATE_FIELDS as RERANK_TEMPLATE_FIELDS
+from ..reranking import RerankError, rerank
 from ..vectorstores import VectorStoreError, open_store, validate_collection_name
 from . import get_or_404, row_dict
 
@@ -89,6 +92,96 @@ def embedding_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, 
         m.dimension = dim
         health = {"ok": True, "dimension": dim, "latency_ms": res.latency_ms}
     except EmbeddingError as exc:
+        health = {"ok": False, "message": str(exc)}
+    health["checked_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    m.last_health = health
+    db.commit()
+    return health
+
+
+# ------------------------------------------------------------------ 리랭크 모델
+class RerankModelIn(BaseModel):
+    name: str
+    provider: str = "tei"  # tei | cohere_compatible | mock
+    engine: str = ""
+    base_url: str = ""
+    model_id: str = ""
+    api_key_env: str = ""
+    is_external: bool = False
+    max_input_tokens: int = 512
+    batch_size: int = 32
+    document_template: str = "{text}"
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+def _rerank_out(m: RerankModel) -> dict[str, Any]:
+    d = row_dict(m)
+    d["blocked"] = m.is_external and not settings.allow_external_llm
+    return d
+
+
+def _check_rerank_body(db: Session, body: RerankModelIn, model_id: int | None = None) -> None:
+    if body.provider not in RERANK_PROVIDERS:
+        raise HTTPException(400, f"알 수 없는 provider: {body.provider} (가능: {', '.join(RERANK_PROVIDERS)})")
+    if not body.name.strip():
+        raise HTTPException(400, "이름을 입력하세요")
+    if body.provider == "cohere_compatible" and not body.model_id.strip():
+        raise HTTPException(400, "Cohere 형식 엔드포인트는 모델 ID가 필요합니다")
+    dup = db.scalar(select(RerankModel).where(RerankModel.name == body.name, RerankModel.id != (model_id or 0)))
+    if dup:
+        raise HTTPException(409, "같은 이름의 리랭크 모델이 있습니다")
+    if body.max_input_tokens < 16 or body.batch_size < 1:
+        raise HTTPException(400, "최대 입력 토큰(16 이상)과 배치 크기(1 이상)를 확인하세요")
+
+
+@router.get("/rerank-models/meta")
+def rerank_meta() -> dict[str, Any]:
+    return {"providers": list(RERANK_PROVIDERS), "template_fields": list(RERANK_TEMPLATE_FIELDS)}
+
+
+@router.get("/rerank-models")
+def list_rerank_models(usable_only: bool = False, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    rows = [_rerank_out(m) for m in db.scalars(select(RerankModel).order_by(RerankModel.name))]
+    return [r for r in rows if r["enabled"] and not r["blocked"]] if usable_only else rows
+
+
+@router.post("/rerank-models", status_code=201)
+def create_rerank_model(body: RerankModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+    _check_rerank_body(db, body)
+    m = RerankModel(**body.model_dump())
+    db.add(m)
+    db.commit()
+    return _rerank_out(m)
+
+
+@router.put("/rerank-models/{model_id}")
+def update_rerank_model(model_id: int, body: RerankModelIn, db: Session = Depends(get_db)) -> dict[str, Any]:
+    m = get_or_404(db, RerankModel, model_id)
+    _check_rerank_body(db, body, model_id)
+    for k, v in body.model_dump().items():
+        setattr(m, k, v)
+    db.commit()
+    return _rerank_out(m)
+
+
+@router.delete("/rerank-models/{model_id}", status_code=204)
+def delete_rerank_model(model_id: int, db: Session = Depends(get_db)) -> None:
+    db.delete(get_or_404(db, RerankModel, model_id))
+    db.commit()
+
+
+@router.post("/rerank-models/{model_id}/health")
+def rerank_health(model_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """연결 확인: 관련 문장이 무관한 문장보다 높은 점수를 받는지도 함께 본다."""
+    m = get_or_404(db, RerankModel, model_id)
+    query = "원격근무 시 보안 수칙"
+    docs = ["원격근무 중에는 회사 VPN에 접속하고 화면 잠금을 5분으로 설정한다.", "구내식당은 오전 11시 30분부터 운영한다."]
+    try:
+        res = rerank(m, query, docs)
+        health = {"ok": True, "latency_ms": res.latency_ms, "scores": [round(s, 4) for s in res.scores],
+                  "sane": res.scores[0] > res.scores[1]}
+    except RerankError as exc:
         health = {"ok": False, "message": str(exc)}
     health["checked_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     m.last_health = health
@@ -272,6 +365,9 @@ class QueryIn(BaseModel):
     filter: str = ""
     # None: 권한 필터 미적용(관리자 보기) / []: 공개 청크만 / ["group:인사팀", ...]: 해당 주체가 볼 수 있는 청크만
     principals: list[str] | None = None
+    # 리랭크: 모델을 주면 벡터 검색 후보(rerank_candidates개, 기본 top_k×4·최소 20)를 다시 점수 매겨 top_k만 반환
+    rerank_model_id: int | None = None
+    rerank_candidates: int | None = None
 
 
 def _index_out(db: Session, ix: VectorIndex) -> dict[str, Any]:
@@ -448,7 +544,14 @@ def query(index_id: int, body: QueryIn, db: Session = Depends(get_db)) -> dict[s
                 principals = sorted({validate_principal(x) for x in body.principals if x.strip()})
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
+        reranker = None
+        if body.rerank_model_id is not None:
+            reranker = get_or_404(db, RerankModel, body.rerank_model_id)
+            if body.rerank_candidates is not None and not 1 <= body.rerank_candidates <= 200:
+                raise HTTPException(400, "리랭크 후보 수는 1~200 사이여야 합니다")
+        top_k = max(1, min(body.top_k, 100))
         return query_index(ix, db.get(EmbeddingModel, ix.embedding_model_id), db.get(VectorStore, ix.store_id),
-                           body.query, max(1, min(body.top_k, 100)), body.filter, principals)
-    except (EmbeddingError, VectorStoreError) as exc:
+                           body.query, top_k, body.filter, principals, reranker,
+                           body.rerank_candidates or (default_rerank_candidates(top_k) if reranker else None))
+    except (EmbeddingError, VectorStoreError, RerankError) as exc:
         raise HTTPException(502, str(exc)) from exc
