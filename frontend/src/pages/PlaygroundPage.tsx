@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { api, papi } from '../api'
 import { chunkColor } from '../colors'
 import { TableView } from '../components/ElementViews'
+import { LoadRunModal } from '../components/LoadRunModal'
 import { TemplateEditor } from '../components/TemplateEditor'
 import { Badge, ErrorBanner, Histogram, Stat, StatusBadge, Tabs, fmtDate, useAsync, usePolling, shortId, Sid } from '../components/ui'
 import type { Chunk, ChunkSettings, DocElement, Issue, PromptPreview, PromptVersion, RunDetail } from '../types'
@@ -76,6 +77,8 @@ export default function PlaygroundPage() {
   const project = useAsync(() => (projectId ? papi.project(projectId) : Promise.resolve(undefined)), [projectId])
   const [appliedFor, setAppliedFor] = useState<string>()
   const [projectNotice, setProjectNotice] = useState('')
+  const [loadOpen, setLoadOpen] = useState(false)
+  const [loadNotice, setLoadNotice] = useState('')
   useEffect(() => {
     // 문서를 바꿀 때마다 한 번, 문서가 속한 프로젝트의 (상속 포함) 프로파일을 기본값으로 적용
     const p = project.data
@@ -209,6 +212,7 @@ export default function PlaygroundPage() {
         </label>
       </div>
       <ErrorBanner error={error || doc.error || prompts.error || models.error} />
+      {loadNotice && <div className="banner info">{loadNotice} <Link to="/indexes">질의 테스트에서 확인 →</Link></div>}
 
       <div className="pg">
         {/* ------------------------------------------------ 왼쪽: 프롬프트·모델·설정 */}
@@ -330,7 +334,7 @@ export default function PlaygroundPage() {
 
         {/* ------------------------------------------------ 가운데: 문서 뷰 */}
         <section className="pg-pane" aria-label="청크 경계 문서 뷰">
-          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 <Sid id={run.id} /></span>}{run?.status === 'done' && <Link to={`/indexes?run=${run.id}`} className="small" style={{ marginLeft: 'auto' }}>벡터 DB 적재 →</Link>}</h3>
+          <h3>문서 뷰 {run && <StatusBadge status={run.status} />}{run && <span className="small muted">실행 <Sid id={run.id} /></span>}{run?.status === 'done' && <button className="sm" style={{ marginLeft: 'auto' }} onClick={() => setLoadOpen(true)}>벡터 DB 적재</button>}</h3>
           {active && <ProgressBar run={run} />}
           {run?.status === 'failed' && <div className="banner err"><pre>{run.error}</pre></div>}
           <ChunkedDocument elements={elements} run={run} />
@@ -387,6 +391,8 @@ export default function PlaygroundPage() {
         )}
         {bottom === 'snapshot' && (run ? <pre className="code-box">{JSON.stringify({ snapshot: run.snapshot, params: run.params, settings: run.settings }, null, 2)}</pre> : <div className="muted">실행을 선택하세요</div>)}
       </div>
+      {loadOpen && run && <LoadRunModal presetRun={run.id} onClose={() => setLoadOpen(false)}
+        onCreated={(ix) => { setLoadOpen(false); setLoadNotice(`'${ix.store_name} / ${ix.collection}'에 적재를 시작했습니다.`) }} />}
     </>
   )
 }

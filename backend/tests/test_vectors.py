@@ -83,8 +83,6 @@ def test_index_and_query_memory_store(client):
     assert again["id"] == ix["id"]
     again = _wait(client, f"/api/indexes/{again['id']}")
     assert again["chunk_count"] == len(run["chunks"])
-    # '실행 추가'는 문서의 프로젝트 저장소(미분류 → 기본 저장소)와 다른 컬렉션이면 거절
-    assert client.post(f"/api/indexes/{ix['id']}/append", json={"run_id": run["id"]}).status_code == 400
 
     dup = client.post("/api/indexes", json={
         "run_id": run["id"], "store_id": store["id"], "embedding_model_id": emb["id"], "collection": "test_mem",

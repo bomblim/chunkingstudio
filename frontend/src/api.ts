@@ -155,7 +155,6 @@ export const vapi = {
   indexTarget: (q: { document_id?: string; project_id?: string }) => get<IndexTarget>(`/api/index-target${qs(q)}`),
   createIndex: (body: { run_id: string; embedding_model_id: string; embed_template: string; metric: string }) =>
     post<VectorIndex>('/api/indexes', body),
-  appendRun: (id: string, runId: string) => post<VectorIndex>(`/api/indexes/${id}/append`, { run_id: runId }),
   deleteIndex: (id: string, dropCollection: boolean) => del(`/api/indexes/${id}${qs({ drop_collection: dropCollection })}`),
   query: (id: string, body: { query: string; top_k: number; filter: string; principals?: string[] | null; rerank_model_id?: string | null; rerank_candidates?: number | null }) => post<QueryResult>(`/api/indexes/${id}/query`, body),
 }

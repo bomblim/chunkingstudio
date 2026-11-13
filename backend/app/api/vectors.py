@@ -421,10 +421,6 @@ class IndexIn(BaseModel):
     mode: str = "append"  # create | recreate | append
 
 
-class AppendIn(BaseModel):
-    run_id: str
-
-
 class QueryIn(BaseModel):
     query: str
     top_k: int = 5
@@ -563,22 +559,6 @@ def create_index(body: IndexIn, background: BackgroundTasks, db: Session = Depen
                        metric=body.metric, mode=mode)
     db.commit()
     background.add_task(execute_index_job, ix.id, body.run_id, mode, replace_document=replace_document)
-    return _index_out(db, ix)
-
-
-@router.post("/indexes/{index_id}/append", status_code=202)
-def append_run(index_id: str, body: AppendIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
-    ix = get_or_404(db, VectorIndex, index_id)
-    run = _check_run(db, body.run_id)
-    target = target_for_project(db, db.get(Document, run.document_id).project_id)
-    store = target["store"]
-    if store is not None and (store["id"] != ix.store_id or store["collection"] != ix.collection):
-        raise HTTPException(400, f"이 문서는 '{store['name']}' 저장소의 '{store['collection']}' 컬렉션에 적재하도록 설정되어 있습니다")
-    if ix.status in ("queued", "running"):
-        raise HTTPException(409, "이 컬렉션에 적재가 진행 중입니다. 끝난 뒤 다시 시도하세요")
-    ix.status = "queued"
-    db.commit()
-    background.add_task(execute_index_job, ix.id, body.run_id, "append")
     return _index_out(db, ix)
 
 
