@@ -89,6 +89,28 @@ def resolve_prompt_version(db: Session, prompt_id: int | None, prompt_version_id
     return prod[-1] if prod else prompt.versions[-1]
 
 
+def project_run_profile(db: Session, tree: dict[int, Project], project_id: int | None) -> dict[str, Any]:
+    """프로젝트(상위 상속) 청킹 프로파일을 청킹 실행 인자로 바꾼다. 설정이 부족하면 ValueError."""
+    if project_id is None or project_id not in tree:
+        raise ValueError("미분류 문서입니다. 프로젝트에 넣거나 method·model_id·prompt_version_id를 직접 지정하세요")
+    eff = effective_profile(tree, project_id)
+    method = eff["method"] or ("llm" if eff["prompt_id"] and eff["model_id"] else None)
+    if method is None:
+        raise ValueError("프로젝트(또는 상위)에 청킹 방식이 설정되지 않았습니다")
+    pv = resolve_prompt_version(db, eff["prompt_id"], eff["prompt_version_id"]) if method == "llm" else None
+    if method == "llm" and (pv is None or not eff["model_id"]):
+        raise ValueError("LLM 청킹에는 프롬프트와 모델이 설정되어야 합니다 (상위 프로젝트 포함)")
+    settings = {**({"doc_type": eff["doc_type"]} if eff["doc_type"] else {}), **(eff["settings"] or {})}
+    return {
+        "method": method,
+        "prompt_version_id": pv.id if pv else None,
+        "model_id": eff["model_id"] if method == "llm" else None,
+        "params": eff["params"] or {},
+        "settings": settings,
+        "extra": {"project": {"id": project_id, "path": path_names(tree, project_id), "profile_sources": eff["sources"]}},
+    }
+
+
 # ------------------------------------------------------------------ 적재 대상 컬렉션
 def default_collection(db: Session) -> VectorCollection | None:
     return db.scalar(select(VectorCollection).where(VectorCollection.is_default.is_(True)).order_by(VectorCollection.id))

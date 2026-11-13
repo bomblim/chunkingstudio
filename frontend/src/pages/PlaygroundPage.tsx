@@ -199,8 +199,8 @@ export default function PlaygroundPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Prompt Playground</h1>
-          <p>프롬프트를 수정하며 LLM이 정한 청크 경계를 원문 위에서 확인합니다. LLM은 Element ID 범위만 반환하고, 청크 본문은 원본 Element로 조립됩니다.</p>
+          <h1>청킹</h1>
+          <p>문서를 청킹하고, 프롬프트를 바꿔 가며 LLM이 정한 청크 경계를 원문 위에서 확인합니다. LLM은 Element ID 범위만 반환하고, 청크 본문은 원본 Element로 조립됩니다.</p>
         </div>
         <label className="field" style={{ minWidth: 280 }}>문서
           <select value={docId ?? ''} onChange={(e) => { setParam('run'); setParam('doc', Number(e.target.value)) }}>

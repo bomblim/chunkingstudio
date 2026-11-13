@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: process.env.CS_API_URL ?? 'http://127.0.0.1:8000', changeOrigin: true },
+      // '/api/'로 끝을 맞춰 화면 경로 /api-guide 가 백엔드로 넘어가지 않게 한다
+      '/api/': { target: process.env.CS_API_URL ?? 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },
 })

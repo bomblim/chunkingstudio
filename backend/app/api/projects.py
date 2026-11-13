@@ -13,7 +13,7 @@ from ..indexing import execute_index_batch
 from ..models import ChunkRun, Document, LLMModel, Project, Prompt, VectorCollection
 from ..projects import (
     default_collection, descendant_ids, effective_access, effective_profile, load_tree, path_names,
-    resolve_collection, resolve_prompt_version, target_brief,
+    project_run_profile, resolve_collection, resolve_prompt_version, target_brief,
     validate_meta, validate_principal, would_cycle,
 )
 from ..services import execute_run
@@ -165,13 +165,10 @@ def run_all(project_id: int, body: RunAllIn, background: BackgroundTasks, db: Se
     """프로젝트의 청킹 프로파일로 소속 문서를 일괄 청킹한다(순차 실행)."""
     p = get_or_404(db, Project, project_id)
     tree = load_tree(db)
-    eff = effective_profile(tree, p.id)
-    method = eff["method"] or ("llm" if eff["prompt_id"] and eff["model_id"] else None)
-    if method is None:
-        raise HTTPException(400, "프로젝트(또는 상위)에 청킹 방식이 설정되지 않았습니다")
-    pv = resolve_prompt_version(db, eff["prompt_id"], eff["prompt_version_id"]) if method == "llm" else None
-    if method == "llm" and (pv is None or not eff["model_id"]):
-        raise HTTPException(400, "LLM 청킹에는 프롬프트와 모델이 설정되어야 합니다 (상위 프로젝트 포함)")
+    try:
+        prof = project_run_profile(db, tree, p.id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     ids = descendant_ids(tree, p.id) if body.include_descendants else {p.id}
     docs = list(db.scalars(select(Document).where(Document.project_id.in_(ids)).order_by(Document.id)))
     if body.only_without_run:
@@ -179,13 +176,11 @@ def run_all(project_id: int, body: RunAllIn, background: BackgroundTasks, db: Se
         docs = [d for d in docs if d.id not in done]
     if not docs:
         raise HTTPException(400, "청킹할 문서가 없습니다")
-    settings = {**({"doc_type": eff["doc_type"]} if eff["doc_type"] else {}), **(eff["settings"] or {})}
-    extra = {"project": {"id": p.id, "path": path_names(tree, p.id), "profile_sources": eff["sources"]}}
-    runs = [create_run(db, d, method, pv.id if pv else None, eff["model_id"], eff["params"] or {}, settings, extra)
-            for d in docs]
+    runs = [create_run(db, d, prof["method"], prof["prompt_version_id"], prof["model_id"], prof["params"],
+                       prof["settings"], prof["extra"]) for d in docs]
     background.add_task(_execute_sequential, [r.id for r in runs])
-    return {"run_ids": [r.id for r in runs], "document_count": len(docs), "method": method,
-            "prompt_version_id": pv.id if pv else None, "model_id": eff["model_id"]}
+    return {"run_ids": [r.id for r in runs], "document_count": len(docs), "method": prof["method"],
+            "prompt_version_id": prof["prompt_version_id"], "model_id": prof["model_id"]}
 
 
 def _execute_sequential(run_ids: list[int]) -> None:

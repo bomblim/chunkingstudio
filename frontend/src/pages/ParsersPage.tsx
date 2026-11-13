@@ -27,10 +27,10 @@ export default function ParsersPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>Parser Registry</h1>
-          <p>운영에서는 Parser 결과를 수신만 하고, UI 테스트 업로드 시에만 등록된 Parser API를 직접 호출합니다.</p>
+          <h1>문서 파서</h1>
+          <p>문서를 표준 스키마로 바꿔 주는 파서(Parser)를 등록합니다. 운영에서는 파서 결과를 수신만 하고, 테스트 업로드 때만 등록된 파서 API를 직접 호출합니다.</p>
         </div>
-        <button className="primary" onClick={() => setEdit({ data: { ...EMPTY } })}>Parser 등록</button>
+        <button className="primary" onClick={() => setEdit({ data: { ...EMPTY } })}>파서 등록</button>
       </div>
       <ErrorBanner error={parsers.error} />
       <div className="card">

@@ -36,7 +36,7 @@ if settings.enable_sample_parser:
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
-    return {"ok": True, "allow_external_llm": settings.allow_external_llm}
+    return {"ok": True, "allow_external_llm": settings.allow_external_llm, "studio_url": settings.studio_url}
 
 
 # ---------------------------------------------------------------- 프론트엔드 정적 파일 (컨테이너 배포용)

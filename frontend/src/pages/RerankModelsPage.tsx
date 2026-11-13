@@ -39,7 +39,7 @@ export default function RerankModelsPage() {
           <h1>리랭크 모델</h1>
           <p>
             벡터 검색으로 가져온 후보 청크를 질의와 함께 다시 점수 매기는 cross-encoder 모델을 등록합니다.
-            "벡터 인덱스·질의"에서 리랭크 모델을 고르면 후보를 재정렬해 상위 결과만 보여 줍니다.
+            "질의 테스트"에서 리랭크 모델을 고르면 후보를 재정렬해 상위 결과만 보여 줍니다.
             TEI <code>/rerank</code>, Cohere 형식 <code>/rerank</code>(vLLM·Infinity·Xinference·Jina·Cohere), NVIDIA NIM <code>/v1/ranking</code>(Nemotron 리랭크)을 지원합니다.
           </p>
         </div>

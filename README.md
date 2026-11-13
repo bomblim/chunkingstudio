@@ -4,8 +4,8 @@ RAG 파이프라인의 청킹 품질을 실험·검증·운영하기 위한 UI �
 
 ## 주요 기능
 
-- **Parser Registry** — 관리자가 등록한 Parser의 파싱 결과를 표준 스키마로 통합하고 UI로 확인
-- **LLM 시멘틱 청킹 Playground** — 프롬프트를 수정해가며 청킹 결과를 원문 위에서 바로 확인·비교
+- **문서 파서** — 관리자가 등록한 Parser의 파싱 결과를 표준 스키마로 통합하고 UI로 확인
+- **청킹 (LLM 시멘틱 청킹)** — 프롬프트를 수정해가며 청킹 결과를 원문 위에서 바로 확인·비교
 - **RAGAS 자동 평가** — 프롬프트 버전별 검색·생성 품질 자동 측정, 승격 게이트 (2단계 예정)
 - **평가 데이터셋 자동 생성** — LLM으로 질문·정답셋 생성, 품질 필터 및 검수 (2단계 예정)
 
@@ -24,7 +24,7 @@ backend/   FastAPI + SQLAlchemy (SQLite 기본, CS_DATABASE_URL로 PostgreSQL �
   app/api/               REST API
   app/sample_parser.py   개발용 샘플 Parser (.md .txt .pdf)
 frontend/  React + TypeScript + Vite
-  src/pages/             문서·뷰어·Playground·프롬프트·Parser·모델·임베딩·벡터 인덱스 화면
+  src/pages/             문서·뷰어·청킹·프롬프트·문서 파서·청킹 모델·임베딩·리랭크·벡터 저장소·질의 테스트 화면
 deploy/milvus/           개발용 Milvus standalone docker compose (v3.0.6)
 ```
 
@@ -48,7 +48,7 @@ cd frontend && npm install && npm run dev
 
 - **청킹 프로파일**: 프로젝트 "설정"에서 청킹 방식·프롬프트(버전 고정 또는 운영 버전 자동)·LLM 모델·청킹 설정·문서 유형을 지정합니다. 비워 둔 항목은 상위 프로젝트 값을 상속합니다.
 - **문서 배정**: 업로드·가져오기 시 프로젝트를 고르거나, 목록에서 문서를 선택해 "프로젝트로 이동"합니다.
-- **Playground**: 프로젝트 문서를 열면 그 프로파일이 기본값으로 적용되고, 조정한 설정을 "현재 설정을 프로젝트에 저장"으로 되돌려 저장할 수 있습니다.
+- **청킹 화면**: 프로젝트 문서를 열면 그 프로파일이 기본값으로 적용되고, 조정한 설정을 "현재 설정을 프로젝트에 저장"으로 되돌려 저장할 수 있습니다.
 - **일괄 청킹**: 프로젝트의 "일괄 청킹"은 하위 포함 모든 문서를 프로파일대로 한 건씩 순차 실행합니다.
 - **적재 위치(컬렉션)**: "벡터 저장소" 화면에서 Milvus 연결마다 적재 컬렉션을 여러 개 등록합니다. 프로젝트 설정에서 컬렉션을 지정하면(하위는 상속) 그 프로젝트 문서는 해당 컬렉션에 적재됩니다. 미분류 문서와 컬렉션을 지정하지 않은 프로젝트는 **기본 컬렉션**(전체에서 하나)에 적재됩니다.
 - **일괄 적재**: 프로젝트의 "일괄 적재"는 하위 포함 문서마다 가장 최근에 성공한 청킹 실행을 골라, 각 문서의 프로젝트 컬렉션에 순차 적재합니다. 성공한 청킹이 없는 문서는 제외되고, 같은 문서의 이전 청크는 교체되어 중복되지 않습니다. 기존 컬렉션에 추가할 때는 그 컬렉션의 임베딩 모델을 그대로 쓰며, 모델을 바꾸려면 "컬렉션 비우고 다시 적재"를 고릅니다.
@@ -65,8 +65,8 @@ cd frontend && npm install && npm run dev
    UPSTAGE_API_KEY=up_xxxxxxxx
    ```
 
-2. **Parser Registry**에서 `upstage-parser`를 수정해 **Project ID**(`proj_…`)와 **Agent ID**(`agt_…`)를 입력하고 활성화합니다. config_id, purpose, include도 여기서 바꿀 수 있습니다. 다른 Parser도 "Upstage 기본값 채우기"로 같은 설정을 만들 수 있습니다.
-3. **문서 → 테스트 문서 업로드**에서 `upstage-parser`를 골라 파일을 올립니다.
+2. **문서 파서**에서 `upstage-parser`를 수정해 **Project ID**(`proj_…`)와 **Agent ID**(`agt_…`)를 입력하고 활성화합니다. config_id, purpose, include도 여기서 바꿀 수 있습니다. 다른 Parser도 "Upstage 기본값 채우기"로 같은 설정을 만들 수 있습니다.
+3. **문서 → 문서 업로드**에서 `upstage-parser`를 골라 파일을 올립니다.
 
 연결 테스트 버튼은 비용이 드는 실제 호출 대신 설정만 확인합니다. 결과는 `upstage` 어댑터가 표준 스키마로 바꿉니다(`elements`가 있으면 그대로, 없으면 `content.html`을 나눠서). 좌표는 0~1 상대값으로 저장되며 원본 대조 뷰가 페이지 비율에 맞춰 그립니다.
 
@@ -84,7 +84,7 @@ docker compose -f deploy/milvus/docker-compose.yml up -d
    docker run --gpus all -p 8080:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id BAAI/bge-m3
    ```
 
-2. **Playground**에서 청킹을 실행한 뒤 "벡터 DB 적재 →"를 누르거나, **벡터 인덱스·질의**에서 "청크 적재"를 누릅니다. 적재 위치는 문서의 프로젝트에 지정된 컬렉션으로 정해집니다(미분류는 기본 컬렉션).
+2. **청킹** 화면에서 청킹을 실행한 뒤 "벡터 DB 적재 →"를 누르거나, **질의 테스트**에서 "청크 적재"를 누릅니다. 적재 위치는 문서의 프로젝트에 지정된 컬렉션으로 정해집니다(미분류는 기본 컬렉션).
 3. 적재가 끝나면 같은 화면의 **질의 테스트**에서 검색 결과(점수·청크 원문·위치)를 확인합니다. Milvus는 `run_id == 3` 같은 필터도 쓸 수 있습니다.
 4. (선택) **리랭크**: "리랭크 모델"에 cross-encoder를 등록하고 질의 테스트에서 고르면, 벡터 검색 후보(기본 Top-K×4, 최소 20)를 리랭크 점수로 다시 정렬해 상위 Top-K를 보여 줍니다. 결과에 리랭크 점수와 함께 벡터 점수·원래 순위(▲▼)가 표시됩니다. 지원 형식: TEI `/rerank`, Cohere 형식 `/rerank`(vLLM `--task score`, Infinity, Xinference, Jina, Cohere). 오프라인 확인용 Mock 리랭커가 기본 등록되어 있습니다.
 
@@ -139,12 +139,16 @@ LLM API 키와 Parser 인증값은 DB에 저장하지 않고, 모델·Parser에 
 
 | 용도 | API |
 |---|---|
-| 운영 유입 (Parser 결과 push) | `POST /api/ingest` `{parser_id, title, payload}` |
-| 운영 유입 (배치) | `POST /api/ingest/batch` (JSON / JSONL 업로드) |
-| 테스트 파싱 (Parser API 직접 호출) | `POST /api/test-parse` (파일 + `parser_ids`) → `GET /api/parse-jobs?ids=` |
-| 청킹 실행 | `POST /api/runs` → `GET /api/runs/{id}` |
+| API 유입 (Parser 결과 push) | `POST /api/ingest` `{parser_id, title, payload}` |
+| API 유입 (배치) | `POST /api/ingest/batch` (JSON / JSONL 업로드) |
+| 1. 문서 업로드 | `POST /api/files` (multipart `file`) → `file_id` |
+| 2. 파싱 (비동기) | `POST /api/parse-jobs` `{file_id, parser_id, project_id}` → `GET /api/parse-jobs/{id}` (완료 시 `document_id`) |
+| 3. 청킹 (비동기) | `POST /api/runs` `{document_id}` (method 생략 시 프로젝트 프로파일) → `GET /api/runs/{id}` |
+| 4. 저장소 적재 (비동기) | `POST /api/indexes` `{run_id, embedding_model_id}` (컬렉션은 프로젝트 설정) → `GET /api/indexes/{id}` |
+| 5. 질의 | `POST /api/indexes/{id}/query` `{query, top_k, principals?, rerank_model_id?}` |
+| 화면 업로드 + 파싱 (Studio 유입) | `POST /api/test-parse` (파일 + `parser_ids`) → `GET /api/parse-jobs?ids=` |
 
-전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
+curl 예시는 화면의 **API 안내** 메뉴에 있습니다(예시 주소는 `.env`의 `CS_STUDIO_URL`). 전체 목록은 서버 실행 후 http://localhost:8000/docs 에서 확인합니다.
 
 ## 문서
 

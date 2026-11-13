@@ -49,6 +49,19 @@ class Parser(TimestampMixin, Base):
     last_health: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class StoredFile(TimestampMixin, Base):
+    """API로 업로드한 원본 파일(내용 해시로 저장). 파싱 작업은 file_id로 이 파일을 참조한다."""
+
+    __tablename__ = "stored_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_name: Mapped[str] = mapped_column(String(500))
+    file_hash: Mapped[str] = mapped_column(String(64), index=True)
+    path: Mapped[str] = mapped_column(String(1000))
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    content_type: Mapped[str] = mapped_column(String(200), default="")
+
+
 class ParseJob(TimestampMixin, Base):
     """UI 테스트용 Parser API 호출 이력(PR-09, IN-07)."""
 

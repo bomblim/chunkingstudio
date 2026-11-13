@@ -24,7 +24,6 @@ export default function DocumentsPage() {
   const docs = useAsync(() => api.documents(docQuery), [JSON.stringify(docQuery)])
   const parsers = useAsync(() => api.parsers(), [])
   const [showUpload, setShowUpload] = useState(false)
-  const [showImport, setShowImport] = useState(false)
   const [editing, setEditing] = useState<{ project?: Project; parentId?: number | null } | null>(null)
   const [indexing, setIndexing] = useState<Project | null>(null)
   const [checked, setChecked] = useState<number[]>([])
@@ -87,8 +86,7 @@ export default function DocumentsPage() {
           <p>프로젝트(문서 분류) 단위로 문서를 관리합니다. 같은 프로젝트의 문서는 같은 청킹 프로파일을 씁니다.</p>
         </div>
         <div className="row">
-          <button onClick={() => setShowImport(true)}>결과 JSON 가져오기</button>
-          <button className="primary" onClick={() => setShowUpload(true)}>테스트 문서 업로드</button>
+          <button className="primary" onClick={() => setShowUpload(true)}>문서 업로드</button>
         </div>
       </div>
       <ErrorBanner error={error || tree.error} />
@@ -166,8 +164,8 @@ export default function DocumentsPage() {
               </select>
               <select aria-label="유입 구분 필터" value={filters.source ?? ''} onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value || undefined }))}>
                 <option value="">전체 유입</option>
-                <option value="runtime">운영</option>
-                <option value="test">테스트</option>
+                <option value="test">Studio</option>
+                <option value="runtime">API</option>
               </select>
             </div>
             {checked.length > 0 && (
@@ -197,7 +195,7 @@ export default function DocumentsPage() {
                     <td><b>{d.title}</b>{d.revision > 1 && <> <Badge>rev {d.revision}</Badge></>}{d.doc_type && <div className="small muted">{d.doc_type}</div>}</td>
                     <td className="small">{d.project_path?.length ? d.project_path.join(' / ') : <span className="muted">미분류</span>}</td>
                     <td>{d.parser_name} <span className="muted small">{d.parser_version}</span></td>
-                    <td>{d.source === 'test' ? <Badge kind="warn">테스트</Badge> : <Badge kind="accent">운영</Badge>}</td>
+                    <td>{d.source === 'test' ? <Badge>Studio</Badge> : <Badge kind="accent">API</Badge>}</td>
                     <td>{d.stats.element_count}<div className="small muted">{d.stats.page_count}p · 표 {d.stats.table_count}</div></td>
                     <td>
                       {d.stats.empty_pages.length > 0 && <Badge kind="warn">빈 페이지 {d.stats.empty_pages.length}</Badge>}{' '}
@@ -217,13 +215,12 @@ export default function DocumentsPage() {
                 ))}
               </tbody>
             </table>
-            {docs.data?.length === 0 && <div className="empty">{selection === 'all' ? '문서가 없습니다. 테스트 문서를 업로드하거나 Parser 결과를 가져오세요.' : '이 프로젝트에 문서가 없습니다. 다른 목록에서 문서를 선택해 이 프로젝트로 옮기거나, 업로드 시 프로젝트를 지정하세요.'}</div>}
+            {docs.data?.length === 0 && <div className="empty">{selection === 'all' ? '문서가 없습니다. "문서 업로드"로 올리거나 API로 문서를 넣으세요.' : '이 프로젝트에 문서가 없습니다. 다른 목록에서 문서를 선택해 이 프로젝트로 옮기거나, 업로드 시 프로젝트를 지정하세요.'}</div>}
           </div>
         </section>
       </div>
 
       {showUpload && <UploadModal projects={projects} defaultProjectId={currentProjectId} onClose={() => setShowUpload(false)} onDone={reloadAll} />}
-      {showImport && <ImportModal projects={projects} defaultProjectId={currentProjectId} onClose={() => setShowImport(false)} onDone={reloadAll} />}
       {indexing && <IndexAllModal project={indexing} onClose={() => setIndexing(null)} />}
       {editing && (
         <ProjectSettingsModal project={editing.project} parentId={editing.parentId} projects={projects} onClose={() => setEditing(null)}
@@ -244,7 +241,7 @@ function ProjectSelect({ projects, value, onChange }: { projects: Project[]; val
   )
 }
 
-/** IN-02: 테스트 문서 업로드 → Parser API 직접 호출 → 결과 확인 */
+/** IN-02: 문서 업로드 → Parser API 직접 호출 → 결과 확인 */
 function UploadModal({ projects, defaultProjectId, onClose, onDone }: { projects: Project[]; defaultProjectId?: number; onClose: () => void; onDone: () => void }) {
   const parsers = useAsync(() => api.parsers(), [])
   const [file, setFile] = useState<File | null>(null)
@@ -286,13 +283,13 @@ function UploadModal({ projects, defaultProjectId, onClose, onDone }: { projects
   }
 
   return (
-    <Modal title="테스트 문서 업로드" onClose={onClose} footer={
+    <Modal title="문서 업로드" onClose={onClose} footer={
       <>
         <button onClick={onClose}>닫기</button>
         <button className="primary" disabled={!file || !selected.length || running} onClick={() => void submit()}>Parser 호출</button>
       </>
     }>
-      <p className="muted small">선택한 Parser의 API를 Studio가 직접 호출하고, 결과를 표준 스키마로 변환해 테스트 영역에 저장합니다. 여러 Parser를 고르면 결과를 비교할 수 있습니다.</p>
+      <p className="muted small">선택한 Parser의 API를 Studio가 직접 호출하고, 결과를 표준 스키마로 변환해 저장합니다(유입: Studio). 여러 Parser를 고르면 결과를 비교할 수 있습니다.</p>
       <ErrorBanner error={error || parsers.error} />
       <div className="col">
         <label className="field">문서 파일<input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
@@ -304,7 +301,7 @@ function UploadModal({ projects, defaultProjectId, onClose, onDone }: { projects
               {p.name} <span className="muted small">v{p.version} · {p.input_formats.join(', ')}</span>
             </label>
           ))}
-          {parsers.data && !callable.length && <span className="muted">API가 등록된 Parser가 없습니다. Parser Registry에서 등록하세요.</span>}
+          {parsers.data && !callable.length && <span className="muted">API가 등록된 파서가 없습니다. 문서 파서에서 등록하세요.</span>}
         </div>
         <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} />
         <label className="field">문서 유형 (선택)<input value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="예: 사내 규정" /></label>
@@ -327,69 +324,6 @@ function UploadModal({ projects, defaultProjectId, onClose, onDone }: { projects
             ))}
           </tbody>
         </table>
-      )}
-    </Modal>
-  )
-}
-
-/** IN-01: Parser 결과(JSON/JSONL) 배치 가져오기 */
-function ImportModal({ projects, defaultProjectId, onClose, onDone }: { projects: Project[]; defaultProjectId?: number; onClose: () => void; onDone: () => void }) {
-  const [projectId, setProjectId] = useState<number | ''>(defaultProjectId ?? '')
-  const parsers = useAsync(() => api.parsers(), [])
-  const failures = useAsync(() => api.ingestFailures(), [])
-  const [parserId, setParserId] = useState<number | ''>('')
-  const [file, setFile] = useState<File | null>(null)
-  const [result, setResult] = useState<{ imported: number; failed: { title: string; reason: string }[] } | null>(null)
-  const [error, setError] = useState('')
-
-  const submit = async () => {
-    if (!file || !parserId) return
-    const form = new FormData()
-    form.append('parser_id', String(parserId))
-    if (projectId) form.append('project_id', String(projectId))
-    form.append('file', file)
-    try {
-      const r = await api.ingestBatch(form)
-      setResult({ imported: r.imported.length, failed: r.failed })
-      onDone()
-      void failures.reload()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  return (
-    <Modal title="Parser 결과 가져오기" onClose={onClose} footer={
-      <>
-        <button onClick={onClose}>닫기</button>
-        <button className="primary" disabled={!file || !parserId} onClick={() => void submit()}>가져오기</button>
-      </>
-    }>
-      <p className="muted small">운영 Parser가 만든 결과 파일(JSON 1건/배열, JSONL)을 선택한 Parser의 어댑터로 변환해 저장합니다. API push는 <code>POST /api/ingest</code>를 사용하세요.</p>
-      <ErrorBanner error={error} />
-      <div className="col">
-        <label className="field">Parser
-          <select value={parserId} onChange={(e) => setParserId(e.target.value ? Number(e.target.value) : '')}>
-            <option value="">선택</option>
-            {parsers.data?.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.adapter})</option>)}
-          </select>
-        </label>
-        <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} />
-        <label className="field">결과 파일<input type="file" accept=".json,.jsonl" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
-      </div>
-      {result && (
-        <div className={`banner ${result.failed.length ? 'warn' : 'info'}`} style={{ marginTop: 12 }}>
-          {result.imported}건 저장, {result.failed.length}건 실패
-          {result.failed.map((f) => <div key={f.title} className="small">{f.title}: {f.reason}</div>)}
-        </div>
-      )}
-      {!!failures.data?.length && (
-        <details style={{ marginTop: 12 }}>
-          <summary>격리된 유입 실패 {failures.data.length}건</summary>
-          <table className="list">
-            <tbody>{failures.data.slice(0, 20).map((f) => <tr key={f.id}><td>{f.source_name}</td><td className="small">{f.reason}</td><td className="small muted">{fmtDate(f.created_at)}</td></tr>)}</tbody>
-          </table>
-        </details>
       )}
     </Modal>
   )
@@ -449,7 +383,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
 
   if (started) {
     return (
-      <Modal wide title={title} onClose={onClose} footer={<><Link to="/indexes"><button>벡터 인덱스·질의로 이동</button></Link><button className="primary" onClick={onClose}>닫기</button></>}>
+      <Modal wide title={title} onClose={onClose} footer={<><Link to="/indexes"><button>질의 테스트로 이동</button></Link><button className="primary" onClick={onClose}>닫기</button></>}>
         {started.map((ix) => {
           const b = ix.stats.batch
           const running = ix.status === 'queued' || ix.status === 'running'
@@ -478,7 +412,7 @@ function IndexAllModal({ project, onClose }: { project: Project; onClose: () => 
             </div>
           )
         })}
-        {!live && started.every((ix) => ix.status === 'done') && <div className="banner info">적재가 끝났습니다. "벡터 인덱스·질의"에서 질의를 테스트할 수 있습니다.</div>}
+        {!live && started.every((ix) => ix.status === 'done') && <div className="banner info">적재가 끝났습니다. "질의 테스트"에서 검색 결과를 확인할 수 있습니다.</div>}
       </Modal>
     )
   }

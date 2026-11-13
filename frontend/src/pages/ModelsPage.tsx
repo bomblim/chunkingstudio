@@ -19,12 +19,12 @@ export default function ModelsPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>모델 레지스트리</h1>
-          <p>청킹에 쓸 LLM을 등록합니다. 상용 API와 오픈소스 자체 서빙(vLLM·TGI·SGLang·Ollama)을 모두 지원합니다.</p>
+          <h1>청킹 모델</h1>
+          <p>시멘틱 청킹에 쓸 LLM을 등록합니다. 상용 API와 오픈소스 자체 서빙(vLLM·TGI·SGLang·Ollama)을 모두 지원합니다.</p>
         </div>
         <button className="primary" onClick={() => setEdit({ data: { ...EMPTY } })}>모델 등록</button>
       </div>
-      {meta.data && !meta.data.allow_external_llm && <div className="banner warn">폐쇄망 모드: 외부 모델은 Playground에 표시되지 않고 호출도 차단됩니다.</div>}
+      {meta.data && !meta.data.allow_external_llm && <div className="banner warn">폐쇄망 모드: 외부 모델은 청킹 화면에 표시되지 않고 호출도 차단됩니다.</div>}
       <ErrorBanner error={models.error} />
       <div className="card">
         <table className="list">

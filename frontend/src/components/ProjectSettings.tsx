@@ -81,7 +81,7 @@ export function ProjectSettingsModal({ project, parentId, projects, onClose, onS
       )}
       <div style={tab === 'profile' ? undefined : { display: 'none' }}>
       <h3 style={{ marginTop: 4 }}>청킹 프로파일</h3>
-      <p className="small muted" style={{ marginTop: 0 }}>이 프로젝트와 하위 프로젝트 문서에 쓸 청킹 방식입니다. "상속"으로 두면 상위 프로젝트 설정을 따릅니다. Playground에서 이 프로젝트 문서를 열면 기본값으로 적용되고, 일괄 청킹도 이 설정으로 실행됩니다.</p>
+      <p className="small muted" style={{ marginTop: 0 }}>이 프로젝트와 하위 프로젝트 문서에 쓸 청킹 방식입니다. "상속"으로 두면 상위 프로젝트 설정을 따릅니다. 청킹 화면에서 이 프로젝트 문서를 열면 기본값으로 적용되고, 일괄 청킹도 이 설정으로 실행됩니다.</p>
       <div className="grid-2">
         <label className="field">청킹 방식
           <select value={d.method ?? ''} onChange={(e) => set('method', (e.target.value || null) as ProjectInput['method'])}>

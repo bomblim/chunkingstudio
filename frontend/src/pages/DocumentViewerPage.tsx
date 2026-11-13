@@ -25,13 +25,13 @@ export default function DocumentViewerPage() {
           <div className="small muted"><Link to="/documents">문서</Link> /</div>
           <h1>{d.title}</h1>
           <p>
-            {d.parser_name} {d.parser_version} · {d.source === 'test' ? '테스트 유입' : '운영 유입'} · rev {d.revision} · {fmtDate(d.created_at)}
+            {d.parser_name} {d.parser_version} · 유입 {d.source === 'test' ? 'Studio' : 'API'} · rev {d.revision} · {fmtDate(d.created_at)}
             {d.revisions.length > 1 && <> · 버전: {d.revisions.map((r) => <Link key={r.id} to={`/documents/${r.id}`} style={{ marginLeft: 4 }}>{r.id === d.id ? <b>r{r.revision}</b> : `r${r.revision}`}</Link>)}</>}
           </p>
         </div>
         <div className="row">
           <button className="danger" onClick={async () => { if (confirm('이 문서를 삭제할까요? 되돌릴 수 없습니다.')) { await api.deleteDocument(d.id); history.back() } }}>삭제</button>
-          <Link className="btn" to={`/playground?doc=${d.id}`}>Playground에서 청킹 →</Link>
+          <Link className="btn" to={`/playground?doc=${d.id}`}>청킹 →</Link>
         </div>
       </div>
       <Tabs<Tab> value={tab} onChange={setTab} tabs={[

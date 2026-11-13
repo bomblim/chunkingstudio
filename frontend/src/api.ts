@@ -55,6 +55,7 @@ export type ModelInput = Omit<LLMModel, 'id' | 'last_health' | 'blocked' | 'stra
 export type VersionInput = Pick<PromptVersion, 'system_template' | 'user_template' | 'few_shots' | 'output_schema' | 'note'>
 
 export const api = {
+  health: () => get<{ ok: boolean; allow_external_llm: boolean; studio_url: string }>('/api/health'),
   // documents
   documents: (f: { parser_id?: number; source?: string; q?: string; project_id?: number; unassigned?: boolean; include_descendants?: boolean } = {}) =>
     get<DocumentSummary[]>(`/api/documents${qs(f)}`),

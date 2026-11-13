@@ -23,7 +23,7 @@ export default function PromptsPage() {
   return (
     <>
       <div className="page-head">
-        <div><h1>프롬프트</h1><p>청킹 프롬프트의 버전·상태를 관리합니다. 저장할 때마다 새 버전이 생기고 기존 버전은 바뀌지 않습니다.</p></div>
+        <div><h1>청킹 프롬프트</h1><p>청킹 프롬프트의 버전·상태를 관리합니다. 저장할 때마다 새 버전이 생기고 기존 버전은 바뀌지 않습니다.</p></div>
         <button className="primary" onClick={() => setCreating(true)}>새 프롬프트</button>
       </div>
       <ErrorBanner error={error || prompts.error} />
@@ -61,7 +61,7 @@ function PromptDetail({ prompt, variables, wrap, onSelect }: { prompt: Prompt; v
       <div className="card">
         <div className="row">
           <h2 className="grow">{prompt.name}</h2>
-          <Link to="/playground">Playground에서 실험 →</Link>
+          <Link to="/playground">청킹 화면에서 실험 →</Link>
         </div>
         <div className="grid-2">
           <label className="field">설명<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>

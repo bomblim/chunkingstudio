@@ -61,7 +61,10 @@ class Settings:
     enable_sample_parser: bool = field(default_factory=lambda: _bool("CS_ENABLE_SAMPLE_PARSER", True))
     # 기본 데이터(샘플 Parser/모델/프롬프트/문서) 시드 여부
     seed: bool = field(default_factory=lambda: _bool("CS_SEED", True))
+    # Studio가 자기 자신(샘플 Parser 등)을 호출할 때 쓰는 내부 주소
     public_base_url: str = field(default_factory=lambda: os.environ.get("CS_PUBLIC_BASE_URL", "http://127.0.0.1:8000"))
+    # 외부 시스템이 Studio API를 호출할 주소 (API 안내 화면의 curl 예시에 표시). 비우면 브라우저 접속 주소
+    studio_url: str = field(default_factory=lambda: os.environ.get("CS_STUDIO_URL", "").strip().rstrip("/"))
     # 빌드된 프론트엔드 경로(컨테이너 배포). 비어 있으면 API만 제공
     static_dir: Path | None = field(
         default_factory=lambda: Path(os.environ["CS_STATIC_DIR"]) if os.environ.get("CS_STATIC_DIR") else None

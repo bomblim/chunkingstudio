@@ -105,8 +105,10 @@ def save_document(
     return row
 
 
-# ------------------------------------------------------------------ 테스트 파싱 (Parser API 직접 호출)
-def execute_parse_job(job_id: int, file_path: str, params: dict[str, Any], doc_type: str = "") -> None:
+# ------------------------------------------------------------------ 파싱 작업 (Parser API 직접 호출)
+def execute_parse_job(job_id: int, file_path: str, params: dict[str, Any], doc_type: str = "",
+                      source: str = "test") -> None:
+    """source: test(Studio 화면에서 업로드) | runtime(API로 유입)"""
     db = SessionLocal()
     try:
         job = db.get(ParseJob, job_id)
@@ -132,7 +134,7 @@ def execute_parse_job(job_id: int, file_path: str, params: dict[str, Any], doc_t
         db.commit()
         try:
             doc = ingest_payload(
-                db, parser=parser, payload=result.payload, title=job.file_name, source="test",
+                db, parser=parser, payload=result.payload, title=job.file_name, source=source,
                 file_hash=job.file_hash, source_file_path=file_path, doc_type=doc_type,
                 project_id=job.project_id,
             )

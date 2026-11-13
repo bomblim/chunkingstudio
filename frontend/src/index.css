@@ -56,15 +56,31 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
 /* ---------------------------------------------------------------- layout */
 .app { display: flex; min-height: 100vh; }
 .sidebar {
-  width: 200px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border);
-  padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; height: 100vh;
+  width: 216px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border);
+  padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; overflow-x: hidden; transition: width .15s ease;
 }
-.brand { font-weight: 700; font-size: 15px; padding: 4px 10px 14px; }
-.brand small { display: block; font-weight: 400; color: var(--text-2); font-size: 12px; }
-.nav-link { padding: 7px 10px; border-radius: 6px; color: var(--text); display: block; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 2px 4px 12px 6px; white-space: nowrap; }
+.brand svg { flex-shrink: 0; }
+.brand-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.brand .nav-toggle { padding: 4px; line-height: 0; color: var(--text-2); flex-shrink: 0; }
+.brand .nav-toggle:hover { color: var(--text); }
+.nav-link { padding: 7px 10px; border-radius: 6px; color: var(--text); display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 .nav-link:hover { background: var(--surface-2); text-decoration: none; }
 .nav-link.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.nav-section { font-size: 11px; color: var(--text-2); padding: 14px 10px 4px; text-transform: uppercase; letter-spacing: .04em; }
+.nav-icon { display: inline-flex; flex-shrink: 0; color: var(--text-2); }
+.nav-link.active .nav-icon { color: var(--accent); }
+.nav-label { overflow: hidden; text-overflow: ellipsis; }
+.nav-section { font-size: 11px; color: var(--text-2); padding: 14px 10px 4px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+
+/* 접힌 메뉴: 아이콘만 (이름은 마우스를 올리면 툴팁) */
+.sidebar.collapsed { width: 58px; padding: 14px 8px; }
+.sidebar.collapsed .brand { flex-direction: column; gap: 10px; padding: 2px 0 10px; }
+.sidebar.collapsed .brand-name, .sidebar.collapsed .nav-label { display: none; }
+.sidebar.collapsed .nav-link { justify-content: center; padding: 8px 0; }
+.sidebar.collapsed .nav-section { padding: 8px 0 4px; }
+.sidebar.collapsed .nav-section span { display: none; }
+.sidebar.collapsed .nav-section::before { content: ""; display: block; border-top: 1px solid var(--border); margin: 0 6px; }
 .main { flex: 1; min-width: 0; padding: 20px 24px; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .page-head p { margin: 0; color: var(--text-2); }
@@ -210,8 +226,12 @@ table.list tr.clickable:hover td { background: var(--surface-2); cursor: pointer
 }
 @media (max-width: 900px) {
   .app { flex-direction: column; }
-  .sidebar { width: auto; height: auto; position: static; flex-direction: row; flex-wrap: wrap; }
+  .sidebar, .sidebar.collapsed { width: auto; height: auto; position: static; flex-direction: row; flex-wrap: wrap; padding: 10px; }
   .nav-section { display: none; }
+  .nav-toggle { display: none; }
+  .sidebar.collapsed .brand { flex-direction: row; padding: 2px 6px; }
+  .sidebar.collapsed .brand-name, .sidebar.collapsed .nav-label { display: inline; }
+  .sidebar.collapsed .nav-link { padding: 7px 10px; }
   .viewer, .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .main { padding: 16px; }
 }
@@ -228,3 +248,8 @@ table.list tr.clickable:hover td { background: var(--surface-2); cursor: pointer
 .ptree-count { font-size: 11.5px; color: var(--text-2); font-weight: 400; }
 .ptree-dot { color: var(--accent); font-size: 9px; margin-left: 4px; vertical-align: middle; }
 @media (max-width: 900px) { .docs-layout { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------- API 안내 */
+.api-code { margin: 6px 0 10px; }
+.api-code-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.api-code .code-box { margin: 0; white-space: pre; overflow-x: auto; }

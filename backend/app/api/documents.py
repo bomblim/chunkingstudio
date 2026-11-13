@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..adapters import AdapterError
 from ..db import get_db
-from ..models import ChunkRun, Document, IngestFailure, Parser, ParseJob, Project
+from ..models import ChunkRun, Document, IngestFailure, Parser, ParseJob, Project, StoredFile
 from ..projects import descendant_ids, load_tree, path_names
 from ..services import execute_parse_job, ingest_payload, sha256, store_file
 from . import get_or_404, row_dict
@@ -298,6 +298,66 @@ async def test_parse(
     return jobs
 
 
+# ------------------------------------------------------------------ 파이프라인 API: 업로드 → 파싱
+@router.post("/files", status_code=201)
+async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """원본 파일만 업로드한다(파싱은 POST /api/parse-jobs 로 따로). 같은 내용은 한 번만 저장된다."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "빈 파일입니다")
+    name = file.filename or "upload"
+    path = store_file(data, name)
+    f = StoredFile(file_name=name, file_hash=sha256(data), path=str(path), size=len(data),
+                   content_type=file.content_type or "")
+    db.add(f)
+    db.commit()
+    return row_dict(f, exclude={"path"})
+
+
+@router.get("/files/{file_id}")
+def get_file(file_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return row_dict(get_or_404(db, StoredFile, file_id), exclude={"path"})
+
+
+class ParseJobIn(BaseModel):
+    file_id: int
+    parser_id: int
+    project_id: int | None = None  # 파싱 결과 문서를 넣을 프로젝트
+    doc_type: str = ""
+    params: dict[str, Any] = {}  # Parser 파라미터
+
+
+@router.post("/parse-jobs", status_code=202)
+def create_parse_job(body: ParseJobIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """업로드한 파일을 Parser API로 파싱한다(비동기). GET /api/parse-jobs/{id} 로 상태와 document_id를 확인."""
+    f = get_or_404(db, StoredFile, body.file_id)
+    if not Path(f.path).exists():
+        raise HTTPException(410, "업로드한 파일이 저장소에 없습니다. 다시 업로드하세요")
+    parser = get_or_404(db, Parser, body.parser_id)
+    if not parser.enabled:
+        raise HTTPException(400, f"{parser.name}: 비활성화된 Parser입니다")
+    if not parser.api_url:
+        raise HTTPException(400, f"{parser.name}: API URL이 없는 결과 수신 전용 Parser입니다 (POST /api/ingest 사용)")
+    job = ParseJob(parser_id=parser.id, file_name=f.file_name, file_hash=f.file_hash, params=body.params or {},
+                   project_id=_check_project(db, body.project_id))
+    db.add(job)
+    db.commit()
+    background.add_task(execute_parse_job, job.id, f.path, job.params, body.doc_type, "runtime")
+    return _job_out(job)
+
+
+def _job_out(j: ParseJob) -> dict[str, Any]:
+    d = row_dict(j)
+    d["parser_name"] = j.parser.name if j.parser else ""
+    return d
+
+
+@router.get("/parse-jobs/{job_id}")
+def get_parse_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """status: queued → parsing → converting → done(document_id 생성) | failed(error_kind, error)"""
+    return _job_out(get_or_404(db, ParseJob, job_id))
+
+
 @router.get("/parse-jobs")
 def list_parse_jobs(ids: str | None = None, limit: int = 50, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     stmt = select(ParseJob).order_by(ParseJob.id.desc())
@@ -305,12 +365,7 @@ def list_parse_jobs(ids: str | None = None, limit: int = 50, db: Session = Depen
         stmt = stmt.where(ParseJob.id.in_([int(x) for x in ids.split(",") if x.strip()]))
     else:
         stmt = stmt.limit(limit)
-    out = []
-    for j in db.scalars(stmt):
-        d = row_dict(j)
-        d["parser_name"] = j.parser.name if j.parser else ""
-        out.append(d)
-    return out
+    return [_job_out(j) for j in db.scalars(stmt)]
 
 
 @router.get("/parse-jobs/{job_id}/raw")

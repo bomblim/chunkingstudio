@@ -12,15 +12,18 @@ from ..chunking.engine import ChunkSettings
 from ..db import get_db
 from ..llm import LLMError, ensure_allowed
 from ..models import ChunkRun, Document, LLMModel, PromptVersion
+from ..projects import load_tree, project_run_profile
 from ..services import execute_run, run_snapshot
 from . import get_or_404, row_dict
+
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 class RunIn(BaseModel):
     document_id: int
-    method: str = "llm"  # llm | rule_structure
+    # llm | rule_structure. 생략하면 문서가 속한 프로젝트(상위 상속)의 청킹 프로파일을 쓴다.
+    method: str | None = None
     prompt_version_id: int | None = None
     model_id: int | None = None
     params: dict[str, Any] = Field(default_factory=dict)
@@ -82,7 +85,16 @@ def create_run(
 @router.post("", status_code=202)
 def start_run(body: RunIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, Any]:
     document = get_or_404(db, Document, body.document_id)
-    run = create_run(db, document, body.method, body.prompt_version_id, body.model_id, body.params, body.settings)
+    if body.method is None:
+        try:
+            prof = project_run_profile(db, load_tree(db), document.project_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        run = create_run(db, document, prof["method"], prof["prompt_version_id"], prof["model_id"],
+                         {**prof["params"], **body.params}, {**prof["settings"], **body.settings}, prof["extra"])
+    else:
+        run = create_run(db, document, body.method, body.prompt_version_id, body.model_id, body.params,
+                         body.settings)
     background.add_task(execute_run, run.id)
     return _summary(run)
 

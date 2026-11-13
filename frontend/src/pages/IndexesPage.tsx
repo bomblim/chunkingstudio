@@ -20,8 +20,8 @@ export default function IndexesPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>벡터 인덱스 · 질의 테스트</h1>
-          <p>청킹 실행 결과를 임베딩해 Milvus에 적재하고, 질의로 어떤 청크가 검색되는지 확인합니다. 청크 원문은 <code>text</code> 필드에 함께 저장됩니다.</p>
+          <h1>질의 테스트</h1>
+          <p>청킹 결과를 임베딩해 벡터 저장소(컬렉션)에 적재하고, 질의로 어떤 청크가 검색되는지 확인합니다. 청크 원문은 <code>text</code> 필드에 함께 저장됩니다.</p>
         </div>
         <button className="primary" onClick={() => setCreating(true)}>청크 적재</button>
       </div>
@@ -99,7 +99,7 @@ function useRunPicker(presetRun?: number) {
         <select value={runId ?? ''} onChange={(e) => setRunId(Number(e.target.value))}>
           {doneRuns.map((r) => <option key={r.id} value={r.id}>#{r.id} · {r.method === 'llm' ? `LLM ${r.prompt_label} · ${r.model_name}` : '규칙 baseline'} · 청크 {r.totals.chunk_count}개 · {fmtDate(r.created_at)}</option>)}
         </select>
-        {runs.data && !doneRuns.length && <span className="small" style={{ color: 'var(--warn)' }}>완료된 청킹 실행이 없습니다. <Link to={`/playground?doc=${docId}`}>Playground에서 실행 →</Link></span>}
+        {runs.data && !doneRuns.length && <span className="small" style={{ color: 'var(--warn)' }}>완료된 청킹 실행이 없습니다. <Link to={`/playground?doc=${docId}`}>청킹 화면에서 실행 →</Link></span>}
       </label>
     </div>
   )
@@ -231,7 +231,7 @@ function QueryPanel({ index }: { index: VectorIndex }) {
 
   return (
     <div className="card" style={{ marginTop: 12 }}>
-      <h2>질의 테스트 — {index.name} <span className="small muted mono">{index.collection}</span></h2>
+      <h2>질의 — {index.name} <span className="small muted mono">{index.collection}</span></h2>
       {index.status !== 'done' && <div className="banner warn">적재가 끝나지 않은 인덱스입니다 ({index.status})</div>}
       <form className="row" onSubmit={(e) => { e.preventDefault(); void run() }}>
         <input className="grow" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="예: 원격근무는 일주일에 며칠까지 가능한가요?" aria-label="질의" />
